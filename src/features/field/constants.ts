@@ -1,17 +1,15 @@
+import type { FieldRule } from '../../utils/constants';
+
 /**
  * Constantes matemáticas do campo de futebol americano.
  *
  * Todas as distâncias vivem em JARDAS (a unidade nativa do esporte) e só são
- * convertidas para pixels no momento do desenho, via PIXELS_PER_YARD. Isso
- * separa a fonte da verdade dimensional (regras do esporte) da escala visual,
- * permitindo re-escalar o campo inteiro (zoom, telas diferentes) sem tocar em
- * nenhuma regra geométrica.
+ * convertidas para pixels no momento do desenho, via PIXELS_PER_YARD (em
+ * utils/constants.ts — é global porque futuras entidades, como jogadores,
+ * também precisam dela). Isso separa a fonte da verdade dimensional (regras
+ * do esporte) da escala visual, permitindo re-escalar o campo inteiro (zoom,
+ * telas diferentes) sem tocar em nenhuma regra geométrica.
  */
-
-// Escala base: quantos pixels representam 1 jarda. O componente <Field />
-// aceita um prop `pixelsPerYard` que sobrescreve este valor padrão, deixando
-// a escala paramétrica para zoom/redimensionamento futuro.
-export const PIXELS_PER_YARD = 10;
 
 // --- Dimensões oficiais do campo (em jardas) -----------------------------
 
@@ -41,9 +39,17 @@ export const YARD_NUMBER_INSET_FROM_SIDELINE_YARDS = 9;
 
 // --- Hash marks --------------------------------------------------------
 
-// Distância de cada linha lateral até a fileira de hash marks.
-// Valor oficial NFL: 70 pés e 9 polegadas = 70,75 pés = 23,5833... jardas.
-export const HASH_MARK_INSET_FROM_SIDELINE_YARDS = 70.75 / 3;
+// Distância de cada linha lateral até a fileira de hash marks, em jardas.
+// Varia por regra de campo — a regra ativa vem do useFieldStore e seleciona
+// a entrada correspondente deste mapa em tempo de renderização:
+//  - NFL: 23,58 jd (70 pés e 9 pol da lateral)
+//  - NCAA: 20,00 jd (60 pés da lateral)
+//  - High School (NFHS): 17,77 jd (53 pés e 4 pol da lateral)
+export const HASH_MARK_INSET_YARDS_BY_RULE: Record<FieldRule, number> = {
+  NFL: 23.58,
+  NCAA: 20.0,
+  HIGHSCHOOL: 17.77,
+};
 
 // Hash marks são desenhadas a cada 1 jarda ao longo de todo o campo de jogo.
 export const HASH_MARK_INTERVAL_YARDS = 1;
