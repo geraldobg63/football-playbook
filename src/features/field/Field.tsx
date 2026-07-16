@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import type Konva from 'konva';
 import { Stage, Layer, Rect, Line, Text } from 'react-konva';
 import { PIXELS_PER_YARD } from '../../utils/constants';
 import { clamp } from '../../utils/math';
-import { useFieldStore, type Assignment } from '../../store/useFieldStore';
+import { useFieldStore, type DrawingMode } from '../../store/useFieldStore';
 import { PlayerNode } from './PlayerNode';
 import { AssignmentsLayer } from './AssignmentsLayer';
 import { stageRef as sharedStageRef } from './stageRef';
@@ -30,17 +30,14 @@ interface FieldProps {
   pixelsPerYard?: number;
 }
 
-interface InProgressLine {
-  playerId: string;
-  type: 'route' | 'block';
-  /** [x0, y0, x1, y1] em JARDAS reais — início (jogador) e ponta atual do mouse. */
-  points: [number, number, number, number];
+// Modos que iniciam algum tipo de desenho no Stage. 'move' e 'erase' ficam
+// de fora — 'move' porque o clique/arraste ali pertence ao PlayerNode, e
+// 'erase' porque tem seu próprio fluxo (ver handleStageClick). Um type
+// guard (em vez de um Set simples) deixa o TypeScript estreitar
+// `drawingMode` corretamente depois do early-return abaixo.
+function isDrawingMode(mode: DrawingMode): mode is 'route' | 'block' | 'motion' | 'zone' {
+  return mode === 'route' || mode === 'block' || mode === 'motion' || mode === 'zone';
 }
-
-// Arraste menor que isso (em jardas) é tratado como clique acidental, não
-// como intenção de desenhar — evita assignments de comprimento ~zero ao
-// simplesmente clicar num jogador em modo 'route'/'block'.
-const MIN_ASSIGNMENT_LENGTH_YARDS = 0.5;
 
 /**
  * Renderiza o campo de futebol americano de forma inteiramente vetorial
@@ -58,14 +55,14 @@ export function Field({ pixelsPerYard = PIXELS_PER_YARD }: FieldProps) {
   const players = useFieldStore((state) => state.players);
   const drawingMode = useFieldStore((state) => state.drawingMode);
   const assignments = useFieldStore((state) => state.assignments);
-  const addAssignment = useFieldStore((state) => state.addAssignment);
-  const isExporting = useFieldStore((state) => state.isExporting);
+  const activeDrawingId = useFieldStore((state) => state.activeDrawingId);
+  const startDrawing = useFieldStore((state) => state.startDrawing);
+  const updateDrawingPoint = useFieldStore((state) => state.updateDrawingPoint);
+  const addDrawingPoint = useFieldStore((state) => state.addDrawingPoint);
+  const finishDrawing = useFieldStore((state) => state.finishDrawing);
+  const addZoneAssignment = useFieldStore((state) => state.addZoneAssignment);
+  const removeAssignment = useFieldStore((state) => state.removeAssignment);
   const hashMarkInsetYards = HASH_MARK_INSET_YARDS_BY_RULE[fieldRule];
-
-  // Linha de rota/bloqueio em construção durante o arraste atual — estado
-  // puramente de interação (não pertence à store: nenhum outro componente
-  // precisa dela até ela virar um Assignment confirmado no mouseUp).
-  const [inProgressLine, setInProgressLine] = useState<InProgressLine | null>(null);
 
   // Captura a instância do Stage para a exportação PNG (exportToPng.ts).
   // O Stage nunca é remontado enquanto Field.tsx estiver vivo, então basta
@@ -89,78 +86,76 @@ export function Field({ pixelsPerYard = PIXELS_PER_YARD }: FieldProps) {
     y: clamp(pointerPx.y / pixelsPerYard, 0, FIELD_WIDTH_YARDS),
   });
 
-  const handleStageMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    // Só inicia uma nova linha nos modos de desenho — em 'move' o clique
-    // arrasta jogadores, e em 'edit-curve' arrasta handles de controle
-    // (ambos tratados por outros nós Konva, não pelo Stage).
-    if (drawingMode !== 'route' && drawingMode !== 'block') return;
+  const handleStageClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (drawingMode === 'erase') {
+      // Colisão com um PlayerNode (Group com id = player.id) OU direto com
+      // uma forma da AssignmentsLayer (que só escuta clique neste modo —
+      // ver isEraseMode abaixo). Em ambos os casos o id encontrado já é o
+      // identificador que removeAssignment espera (playerId, ou o próprio
+      // id do assignment no caso de uma zona sem dono).
+      const clickedGroup = e.target.findAncestor('Group', true);
+      const targetId = clickedGroup?.id() || e.target.id();
+      if (targetId) removeAssignment(targetId);
+      return;
+    }
+
+    if (!isDrawingMode(drawingMode)) return;
 
     const stage = e.target.getStage();
     const pointerPx = stage?.getPointerPosition();
     if (!pointerPx) return;
+    const { x, y } = pointerToYards(pointerPx);
 
-    // "Colidiu com um PlayerNode": o alvo real do clique (Circle/Text) tem
-    // como ancestral o Group do jogador, identificado pelo `id` do Konva.
+    if (activeDrawingId) {
+      // Já desenhando: este clique fixa o ponto atual (onde o mouse já
+      // está) e abre um novo par que passa a seguir o mouse — é isso que
+      // cria a "quebra" da polilinha a cada clique.
+      addDrawingPoint(x, y);
+      return;
+    }
+
+    if (drawingMode === 'zone') {
+      // Zona não tem jogador dono e não entra no fluxo de múltiplos
+      // cliques: um clique já cria a elipse inteira.
+      addZoneAssignment(x, y);
+      return;
+    }
+
+    // route/block/motion: só inicia o vetor se o clique colidiu com um
+    // PlayerNode. O alvo real do clique (Circle/Text) tem como ancestral
+    // o Group do jogador, identificado pelo `id` do Konva.
     const clickedGroup = e.target.findAncestor('Group', true);
     const clickedPlayerId = clickedGroup?.id();
     const player = players.find((candidate) => candidate.id === clickedPlayerId);
     if (!player) return;
 
-    const { x, y } = pointerToYards(pointerPx);
-    setInProgressLine({ playerId: player.id, type: drawingMode, points: [player.x, player.y, x, y] });
+    startDrawing(drawingMode, player.id, player.x, player.y, x, y);
   };
 
   const handleStageMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    if (!inProgressLine) return;
+    if (!activeDrawingId) return;
 
     const stage = e.target.getStage();
     const pointerPx = stage?.getPointerPosition();
     if (!pointerPx) return;
 
     const { x, y } = pointerToYards(pointerPx);
-    setInProgressLine((current) =>
-      current ? { ...current, points: [current.points[0], current.points[1], x, y] } : null,
-    );
+    updateDrawingPoint(x, y);
   };
 
-  const handleStageMouseUp = () => {
-    if (!inProgressLine) return;
-
-    const [x0, y0, x1, y1] = inProgressLine.points;
-    const dragDistanceYards = Math.hypot(x1 - x0, y1 - y0);
-    if (dragDistanceYards > MIN_ASSIGNMENT_LENGTH_YARDS) {
-      addAssignment({
-        id: `assign-${inProgressLine.playerId}`,
-        playerId: inProgressLine.playerId,
-        type: inProgressLine.type,
-        points: inProgressLine.points,
-        // Ponto de controle inicial = ponto médio exato entre início e fim.
-        // Uma Bezier quadrática com o controle no meio é matematicamente
-        // idêntica a uma linha reta — a curva só aparece quando o usuário
-        // arrasta o handle (ver AssignmentsLayer) para "puxar" a linha.
-        controlPoint: [(x0 + x1) / 2, (y0 + y1) / 2],
-      });
-    }
-    setInProgressLine(null);
+  const handleStageDblClick = () => {
+    if (!activeDrawingId) return;
+    finishDrawing();
   };
-
-  const previewAssignment: Assignment | null = inProgressLine
-    ? {
-        id: 'preview',
-        playerId: inProgressLine.playerId,
-        type: inProgressLine.type,
-        points: inProgressLine.points,
-      }
-    : null;
 
   return (
     <Stage
       ref={stageRef}
       width={fieldWidthPx}
       height={fieldHeightPx}
-      onMouseDown={handleStageMouseDown}
+      onClick={handleStageClick}
       onMouseMove={handleStageMouseMove}
-      onMouseUp={handleStageMouseUp}
+      onDblClick={handleStageDblClick}
     >
       <Layer listening={false}>
         <FieldTurf widthPx={fieldWidthPx} heightPx={fieldHeightPx} />
@@ -190,8 +185,8 @@ export function Field({ pixelsPerYard = PIXELS_PER_YARD }: FieldProps) {
       </Layer>
       {/* Camada interativa: separada do fundo estático (listening={false}
           acima) para que só os jogadores capturem eventos de arraste. Só é
-          "draggable" no modo 'move' — em 'route'/'block' o clique inicia o
-          desenho de uma linha (ver handleStageMouseDown acima). */}
+          "draggable" no modo 'move' — nos modos de desenho o clique inicia
+          uma polilinha (ver handleStageClick acima). */}
       <Layer>
         {players.map((player) => (
           <PlayerNode key={player.id} player={player} draggable={drawingMode === 'move'} />
@@ -199,9 +194,9 @@ export function Field({ pixelsPerYard = PIXELS_PER_YARD }: FieldProps) {
       </Layer>
       <AssignmentsLayer
         assignments={assignments}
-        previewAssignment={previewAssignment}
-        drawingMode={drawingMode}
-        isExporting={isExporting}
+        players={players}
+        activeDrawingId={activeDrawingId}
+        isEraseMode={drawingMode === 'erase'}
       />
     </Stage>
   );

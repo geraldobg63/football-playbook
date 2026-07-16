@@ -1,172 +1,193 @@
-import type Konva from 'konva';
-import { Circle, Layer, Shape } from 'react-konva';
+import { Arrow, Ellipse, Layer, Line } from 'react-konva';
 import { PIXELS_PER_YARD } from '../../utils/constants';
-import { clamp } from '../../utils/math';
-import { useFieldStore, type Assignment, type DrawingMode } from '../../store/useFieldStore';
-import { FIELD_LENGTH_YARDS, FIELD_WIDTH_YARDS } from './constants';
+import type { Assignment, Player } from '../../store/useFieldStore';
 
-const ROUTE_COLOR = '#facc15'; // amarelo — alto contraste com o gramado
-const BLOCK_COLOR = '#f5f5f0'; // branco — mesma família das marcações do campo
-const HANDLE_FILL = '#38bdf8'; // azul claro — bem distinto de rotas/bloqueios
-const HANDLE_STROKE = '#0c4a6e';
+// Cor por time de origem — quem desenhou a linha é dono do vetor.
+const OFFENSE_COLOR = '#eab308'; // amarelo
+const DEFENSE_COLOR = '#ef4444'; // vermelho
+// Zona é sempre um conceito defensivo (área de cobertura), sem dono
+// individual — por isso não segue a lógica de cor por time.
+const ZONE_COLOR = '#ef4444';
+const ZONE_FILL_OPACITY = 0.3;
+
 const STROKE_WIDTH_PX = 3;
+const ARROW_POINTER_LENGTH_PX = 10;
+const ARROW_POINTER_WIDTH_PX = 10;
+const MOTION_DASH_PX: [number, number] = [10, 5];
 
 // Comprimento total da barra perpendicular ("T") na ponta de um bloqueio,
-// em jardas — metade para cada lado do ponto final da curva.
+// em jardas — metade para cada lado do último ponto da polilinha.
 const BLOCK_T_BAR_LENGTH_YARDS = 2;
 
-// Geometria da cabeça da seta (rotas), em pixels/radianos.
-const ARROW_HEAD_LENGTH_PX = 12;
-const ARROW_HEAD_SPREAD_RAD = Math.PI / 7; // ≈ 25.7° de abertura por "asa"
-
-const HANDLE_RADIUS_PX = 6;
+// "8x8 jardas" = diâmetro da zona; o raio (usado pelo Konva Ellipse) é metade.
+const ZONE_DIAMETER_YARDS = 8;
 
 interface AssignmentsLayerProps {
   assignments: Assignment[];
-  /** Linha ainda sendo desenhada (arraste em andamento) — mesmo desenho,
-   * com opacidade reduzida para indicar que ainda não foi confirmada. */
-  previewAssignment?: Assignment | null;
-  drawingMode: DrawingMode;
-  /** True durante a exportação PNG (exportToPng.ts) — força os handles de
-   * controle a sumirem mesmo em 'move'/'edit-curve', para não aparecerem
-   * no arquivo exportado. */
-  isExporting: boolean;
+  players: Player[];
+  /** Id do assignment sendo desenhado agora (ver Field.tsx) — renderizado
+   * com opacidade reduzida até o duplo-clique confirmar o desenho. */
+  activeDrawingId: string | null;
+  /** True no modo 'erase': habilita hit-testing nas formas (normalmente
+   * `listening={false}`, puramente decorativas) para que clicar direto
+   * numa linha/zona também funcione como colisão para a borracha. */
+  isEraseMode: boolean;
 }
 
 /**
- * Camada vetorial para rotas de passe e esquemas de bloqueio, desenhados
- * como curvas de Bezier quadráticas (P0 = jogador, P1 = controlPoint,
- * P2 = ponta). Os handles de controle só ficam interativos nos modos
- * 'move'/'edit-curve' — por isso o Layer precisa de `listening` habilitado
- * (diferente da versão puramente decorativa anterior).
+ * Camada vetorial para rotas, motions, bloqueios e zonas. Toda a interação
+ * de desenho acontece no Stage (Field.tsx) e é gravada diretamente na
+ * store — esta camada normalmente só renderiza o resultado
+ * (`listening={false}`), exceto no modo 'erase', quando as formas passam a
+ * aceitar clique para permitir apagar clicando direto na linha.
  */
 export function AssignmentsLayer({
   assignments,
-  previewAssignment,
-  drawingMode,
-  isExporting,
+  players,
+  activeDrawingId,
+  isEraseMode,
 }: AssignmentsLayerProps) {
-  const showHandles = (drawingMode === 'move' || drawingMode === 'edit-curve') && !isExporting;
-
   return (
-    <Layer>
+    <Layer listening={isEraseMode}>
       {assignments.map((assignment) => (
-        <AssignmentCurve key={assignment.id} assignment={assignment} opacity={1} />
+        <AssignmentShape
+          key={assignment.id}
+          assignment={assignment}
+          color={resolveAssignmentColor(assignment, players)}
+          opacity={assignment.id === activeDrawingId ? 0.65 : 1}
+        />
       ))}
-      {previewAssignment && <AssignmentCurve assignment={previewAssignment} opacity={0.65} />}
-      {showHandles &&
-        assignments.map((assignment) => (
-          <ControlPointHandle key={`handle-${assignment.id}`} assignment={assignment} />
-        ))}
     </Layer>
   );
 }
 
-/** Ponto de controle em jardas: o salvo na store, ou o ponto médio
- * geométrico como fallback (assignments antigas / preview em construção). */
-function resolveControlPointYards(assignment: Assignment): [number, number] {
-  if (assignment.controlPoint) return assignment.controlPoint;
-  const [x0, y0, x1, y1] = assignment.points;
-  return [(x0 + x1) / 2, (y0 + y1) / 2];
+/** Cor do vetor a partir do time do jogador dono (`assignment.playerId`).
+ * Zonas não têm dono e são sempre vermelhas (ver ZONE_COLOR). */
+function resolveAssignmentColor(assignment: Assignment, players: Player[]): string {
+  const owner = players.find((player) => player.id === assignment.playerId);
+  return owner?.team === 'defense' ? DEFENSE_COLOR : OFFENSE_COLOR;
 }
 
-function AssignmentCurve({ assignment, opacity }: { assignment: Assignment; opacity: number }) {
-  const [x0, y0, x1, y1] = assignment.points;
-  const [cx, cy] = resolveControlPointYards(assignment);
+function AssignmentShape({
+  assignment,
+  color,
+  opacity,
+}: {
+  assignment: Assignment;
+  color: string;
+  opacity: number;
+}) {
+  // Polilinha em JARDAS -> pixels só aqui, na borda de renderização.
+  const pointsPx = assignment.points.map((yards) => yards * PIXELS_PER_YARD);
+  // Identificador Konva usado pela borracha (ver Field.tsx): jogadores
+  // usam o próprio playerId; zonas (sem dono) usam o id do assignment.
+  const konvaId = assignment.playerId ?? assignment.id;
 
-  // Conversão jarda -> pixel só aqui, na borda de renderização.
-  const startX = x0 * PIXELS_PER_YARD;
-  const startY = y0 * PIXELS_PER_YARD;
-  const endX = x1 * PIXELS_PER_YARD;
-  const endY = y1 * PIXELS_PER_YARD;
-  const controlX = cx * PIXELS_PER_YARD;
-  const controlY = cy * PIXELS_PER_YARD;
-
-  // Tangente da curva no ponto final: para uma Bezier quadrática P0-P1-P2,
-  // a direção no fim é dada pelo vetor P1 -> P2 (controle -> fim).
-  const tangentAngle = Math.atan2(endY - controlY, endX - controlX);
-
-  const color = assignment.type === 'route' ? ROUTE_COLOR : BLOCK_COLOR;
-
-  return (
-    <Shape
-      listening={false}
-      opacity={opacity}
-      sceneFunc={(context) => {
-        context.strokeStyle = color;
-        context.fillStyle = color;
-        context.lineWidth = STROKE_WIDTH_PX;
-
-        context.beginPath();
-        context.moveTo(startX, startY);
-        context.quadraticCurveTo(controlX, controlY, endX, endY);
-        context.stroke();
-
-        if (assignment.type === 'route') {
-          drawArrowHead(context, endX, endY, tangentAngle);
-        } else {
-          drawBlockTBar(context, endX, endY, tangentAngle);
-        }
-      }}
-    />
-  );
+  switch (assignment.type) {
+    case 'route':
+      return (
+        <Arrow
+          id={konvaId}
+          points={pointsPx}
+          stroke={color}
+          fill={color}
+          strokeWidth={STROKE_WIDTH_PX}
+          tension={0}
+          pointerLength={ARROW_POINTER_LENGTH_PX}
+          pointerWidth={ARROW_POINTER_WIDTH_PX}
+          opacity={opacity}
+        />
+      );
+    case 'motion':
+      return (
+        <Arrow
+          id={konvaId}
+          points={pointsPx}
+          stroke={color}
+          fill={color}
+          strokeWidth={STROKE_WIDTH_PX}
+          tension={0}
+          dash={MOTION_DASH_PX}
+          pointerLength={ARROW_POINTER_LENGTH_PX}
+          pointerWidth={ARROW_POINTER_WIDTH_PX}
+          opacity={opacity}
+        />
+      );
+    case 'block':
+      return <BlockPolyline pointsPx={pointsPx} color={color} opacity={opacity} konvaId={konvaId} />;
+    case 'zone':
+      return <ZoneEllipse pointsPx={pointsPx} opacity={opacity} konvaId={konvaId} />;
+    default:
+      return null;
+  }
 }
 
-function drawArrowHead(context: Konva.Context, tipX: number, tipY: number, angle: number) {
-  const wing1Angle = angle - ARROW_HEAD_SPREAD_RAD;
-  const wing2Angle = angle + ARROW_HEAD_SPREAD_RAD;
+function BlockPolyline({
+  pointsPx,
+  color,
+  opacity,
+  konvaId,
+}: {
+  pointsPx: number[];
+  color: string;
+  opacity: number;
+  konvaId: string;
+}) {
+  const n = pointsPx.length;
+  const endX = pointsPx[n - 2];
+  const endY = pointsPx[n - 1];
+  // Só há um ponto (polilinha degenerada): sem segmento anterior, cai no
+  // próprio ponto final — atan2(0,0) é 0 por definição, não lança erro.
+  const prevX = n >= 4 ? pointsPx[n - 4] : endX;
+  const prevY = n >= 4 ? pointsPx[n - 3] : endY;
 
-  context.beginPath();
-  context.moveTo(tipX, tipY);
-  context.lineTo(
-    tipX - ARROW_HEAD_LENGTH_PX * Math.cos(wing1Angle),
-    tipY - ARROW_HEAD_LENGTH_PX * Math.sin(wing1Angle),
-  );
-  context.lineTo(
-    tipX - ARROW_HEAD_LENGTH_PX * Math.cos(wing2Angle),
-    tipY - ARROW_HEAD_LENGTH_PX * Math.sin(wing2Angle),
-  );
-  context.closePath();
-  context.fill();
-}
-
-function drawBlockTBar(context: Konva.Context, tipX: number, tipY: number, angle: number) {
+  // A tangente na ponta do bloqueio é a direção do ÚLTIMO segmento da
+  // polilinha (penúltimo ponto -> último ponto), não da linha inteira —
+  // assim a barra do "T" acompanha corretamente qualquer quebra de rota.
+  const angle = Math.atan2(endY - prevY, endX - prevX);
   const halfBarPx = (BLOCK_T_BAR_LENGTH_YARDS * PIXELS_PER_YARD) / 2;
   const perpAngle1 = angle + Math.PI / 2;
   const perpAngle2 = angle - Math.PI / 2;
-
-  context.beginPath();
-  context.moveTo(tipX + halfBarPx * Math.cos(perpAngle1), tipY + halfBarPx * Math.sin(perpAngle1));
-  context.lineTo(tipX + halfBarPx * Math.cos(perpAngle2), tipY + halfBarPx * Math.sin(perpAngle2));
-  context.stroke();
-}
-
-function ControlPointHandle({ assignment }: { assignment: Assignment }) {
-  const updateControlPoint = useFieldStore((state) => state.updateControlPoint);
-  const [cx, cy] = resolveControlPointYards(assignment);
-
-  const dragBoundFunc = (pos: { x: number; y: number }) => ({
-    x: clamp(pos.x, 0, FIELD_LENGTH_YARDS * PIXELS_PER_YARD),
-    y: clamp(pos.y, 0, FIELD_WIDTH_YARDS * PIXELS_PER_YARD),
-  });
-
-  const handleDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
-    const xYards = clamp(e.target.x() / PIXELS_PER_YARD, 0, FIELD_LENGTH_YARDS);
-    const yYards = clamp(e.target.y() / PIXELS_PER_YARD, 0, FIELD_WIDTH_YARDS);
-    updateControlPoint(assignment.id, xYards, yYards);
-  };
+  const tStart = [endX + halfBarPx * Math.cos(perpAngle1), endY + halfBarPx * Math.sin(perpAngle1)];
+  const tEnd = [endX + halfBarPx * Math.cos(perpAngle2), endY + halfBarPx * Math.sin(perpAngle2)];
 
   return (
-    <Circle
-      x={cx * PIXELS_PER_YARD}
-      y={cy * PIXELS_PER_YARD}
-      radius={HANDLE_RADIUS_PX}
-      fill={HANDLE_FILL}
-      stroke={HANDLE_STROKE}
-      strokeWidth={1.5}
-      draggable
-      dragBoundFunc={dragBoundFunc}
-      onDragMove={handleDragMove}
+    <>
+      <Line id={konvaId} points={pointsPx} stroke={color} strokeWidth={STROKE_WIDTH_PX} opacity={opacity} />
+      <Line
+        id={konvaId}
+        points={[...tStart, ...tEnd]}
+        stroke={color}
+        strokeWidth={STROKE_WIDTH_PX}
+        opacity={opacity}
+      />
+    </>
+  );
+}
+
+function ZoneEllipse({
+  pointsPx,
+  opacity,
+  konvaId,
+}: {
+  pointsPx: number[];
+  opacity: number;
+  konvaId: string;
+}) {
+  const [cx, cy] = pointsPx;
+  const radiusPx = (ZONE_DIAMETER_YARDS / 2) * PIXELS_PER_YARD;
+  return (
+    <Ellipse
+      id={konvaId}
+      x={cx}
+      y={cy}
+      radiusX={radiusPx}
+      radiusY={radiusPx}
+      fill={ZONE_COLOR}
+      fillOpacity={ZONE_FILL_OPACITY}
+      stroke={ZONE_COLOR}
+      strokeWidth={STROKE_WIDTH_PX}
+      opacity={opacity}
     />
   );
 }

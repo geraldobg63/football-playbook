@@ -1,5 +1,6 @@
 import { Field } from './features/field/Field';
 import { FieldControls } from './features/field/FieldControls';
+import { HelpGuide } from './features/field/HelpGuide';
 import { PlaybookSidebar } from './features/playbook/PlaybookSidebar';
 
 function App() {
@@ -10,6 +11,7 @@ function App() {
         <FieldControls />
         <Field />
       </div>
+      <HelpGuide />
     </div>
   );
 }

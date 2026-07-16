@@ -34,6 +34,7 @@ interface PlayerNodeProps {
  */
 export function PlayerNode({ player, draggable }: PlayerNodeProps) {
   const updatePlayerPosition = useFieldStore((state) => state.updatePlayerPosition);
+  const updatePlayerLabel = useFieldStore((state) => state.updatePlayerLabel);
 
   const radiusPx = PLAYER_RADIUS_YARDS * PIXELS_PER_YARD;
 
@@ -56,6 +57,29 @@ export function PlayerNode({ player, draggable }: PlayerNodeProps) {
     updatePlayerPosition(player.id, xYards, yYards);
   };
 
+  // Duplo-clique renomeia a sigla via prompt nativo. `cancelBubble` evita
+  // que o mesmo duplo-clique também suba até o Stage e dispare o
+  // finishDrawing() de uma rota em andamento (ver Field.tsx).
+  const handleDblClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    e.cancelBubble = true;
+
+    const newLabel = window.prompt('Nova sigla (máx 3 letras):', player.label);
+    if (newLabel === null) return; // usuário cancelou o prompt
+
+    const trimmedLabel = newLabel.trim().substring(0, 3).toUpperCase();
+    if (!trimmedLabel) return; // confirmado em branco — não faz sentido aplicar
+
+    updatePlayerLabel(player.id, trimmedLabel);
+  };
+
+  const handleMouseEnter = () => {
+    document.body.style.cursor = 'pointer';
+  };
+
+  const handleMouseLeave = () => {
+    document.body.style.cursor = 'default';
+  };
+
   return (
     <Group
       id={player.id}
@@ -64,6 +88,9 @@ export function PlayerNode({ player, draggable }: PlayerNodeProps) {
       draggable={draggable}
       dragBoundFunc={dragBoundFunc}
       onDragEnd={handleDragEnd}
+      onDblClick={handleDblClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       <Circle
         radius={radiusPx}
