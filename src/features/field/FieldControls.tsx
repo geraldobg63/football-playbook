@@ -12,6 +12,14 @@ const FIELD_RULE_LABELS: Record<FieldRule, string> = {
   HIGHSCHOOL: 'High School',
 };
 
+// Servidos direto de /public pelo Vite — sem import, o caminho é resolvido
+// a partir da raiz do site em runtime (funciona igual em dev e no build).
+const FIELD_RULE_LOGOS: Record<FieldRule, string> = {
+  NFL: '/NFL.webp',
+  NCAA: '/NCAA.webp',
+  HIGHSCHOOL: '/NFHS.png',
+};
+
 const DRAWING_MODES: DrawingMode[] = ['move', 'route', 'block', 'motion', 'zone', 'erase'];
 
 const DRAWING_MODE_LABELS: Record<DrawingMode, string> = {
@@ -76,23 +84,31 @@ export function FieldControls() {
 
   return (
     <div className="flex w-full shrink-0 flex-col items-start gap-3 overflow-x-visible overflow-y-auto border-t border-white/5 bg-lobos-navy-900 p-3 shadow-lg md:h-screen md:w-72 md:border-t-0 md:border-l">
-      <ToolbarSection label="Regras">
+      {/* Seletor de liga por logo — vive fora do padrão ToolbarSection de
+          propósito: os logos já são autoexplicativos (liga reconhecível
+          visualmente), então o card não carrega um micro-label. */}
+      <div className="mb-4 flex flex-row justify-center gap-2 rounded-xl bg-lobos-navy-900 p-2">
         {FIELD_RULES.map((rule) => (
           <button
             key={rule}
             type="button"
             onClick={() => setFieldRule(rule)}
             aria-pressed={fieldRule === rule}
-            className={`rounded px-3 py-1.5 text-sm font-semibold ${INTERACTIVE_BUTTON_CLASSES} ${
-              fieldRule === rule
-                ? 'bg-lobos-gold-500 text-lobos-navy-950'
-                : 'bg-lobos-navy-800 text-slate-300 hover:bg-lobos-navy-700'
-            }`}
+            aria-label={FIELD_RULE_LABELS[rule]}
+            className={INTERACTIVE_BUTTON_CLASSES}
           >
-            {FIELD_RULE_LABELS[rule]}
+            <img
+              src={FIELD_RULE_LOGOS[rule]}
+              alt={FIELD_RULE_LABELS[rule]}
+              className={`h-12 w-12 cursor-pointer rounded-lg object-contain p-1.5 transition-all ${
+                fieldRule === rule
+                  ? 'border-2 border-lobos-gold-500 bg-lobos-navy-800'
+                  : 'opacity-60 hover:bg-lobos-navy-800/50 hover:opacity-100'
+              }`}
+            />
           </button>
         ))}
-      </ToolbarSection>
+      </div>
 
       <ToolbarSection label="Ações">
         <button
