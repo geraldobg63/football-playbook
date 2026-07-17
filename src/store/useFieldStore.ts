@@ -188,7 +188,15 @@ export const useFieldStore = create<FieldState>((set) => ({
   activeDrawingId: null,
   startDrawing: (type, playerId, anchorX, anchorY, pointerX, pointerY) =>
     set((state) => {
-      const id = `assign-${playerId}`;
+      // Id único POR SESSÃO de desenho (não só por jogador): um id fixo
+      // como `assign-${playerId}` faz `activeDrawingId` colidir com o
+      // assignment de uma sessão de desenho ANTERIOR do mesmo jogador — se
+      // startDrawing rodasse de novo por engano enquanto activeDrawingId
+      // ainda apontasse pro desenho velho (ex.: uma race entre gestos),
+      // updateDrawingPoint/addDrawingPoint passariam a não achar mais o
+      // assignment (`a.id !== state.activeDrawingId` sempre verdadeiro) e
+      // virariam no-op silencioso pro resto da sessão, sem erro nenhum.
+      const id = `assign-${playerId}-${Date.now()}`;
       const newAssignment: Assignment = {
         id,
         playerId,
@@ -208,6 +216,16 @@ export const useFieldStore = create<FieldState>((set) => ({
   updateDrawingPoint: (x, y) =>
     set((state) => {
       if (!state.activeDrawingId) return state;
+      // Guarda contra desincronização: se activeDrawingId não bate com
+      // NENHUM assignment (ex.: foi substituído por um startDrawing
+      // concorrente pro mesmo jogador), mapear não faz nada e o desenho
+      // fica "travado" pro resto da sessão sem nenhum sinal disso. Resetar
+      // aqui transforma um estado fantasma silencioso num "desenho
+      // cancelado" visível — pior caso é o usuário precisar clicar nem
+      // jogador de novo, não uma trava permanente sem explicação.
+      if (!state.assignments.some((a) => a.id === state.activeDrawingId)) {
+        return { activeDrawingId: null };
+      }
       return {
         assignments: state.assignments.map((a) => {
           if (a.id !== state.activeDrawingId) return a;
@@ -221,6 +239,9 @@ export const useFieldStore = create<FieldState>((set) => ({
   addDrawingPoint: (x, y) =>
     set((state) => {
       if (!state.activeDrawingId) return state;
+      if (!state.assignments.some((a) => a.id === state.activeDrawingId)) {
+        return { activeDrawingId: null };
+      }
       return {
         assignments: state.assignments.map((a) => {
           if (a.id !== state.activeDrawingId) return a;
