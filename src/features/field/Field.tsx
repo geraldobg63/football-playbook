@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type Konva from 'konva';
 import { Stage, Layer, Rect, Line, Text } from 'react-konva';
 import { PIXELS_PER_YARD } from '../../utils/constants';
@@ -224,6 +224,46 @@ export function Field({ pixelsPerYard = PIXELS_PER_YARD }: FieldProps) {
     startDrawing(dragStart.type, dragStart.playerId, dragStart.anchorXYards, dragStart.anchorYYards, x, y);
   };
 
+  // A geometria do campo (~219 Line/Text) só muda quando pixelsPerYard ou
+  // fieldRule mudam — praticamente nunca durante o uso normal. Sem memo,
+  // Field re-renderiza (via Zustand) a cada mousemove enquanto se desenha
+  // uma rota, e essa camada inteira seria recriada e re-reconciliada a
+  // cada frame à toa. `yd` é recalculado AQUI DENTRO (em vez de usar o `yd`
+  // do escopo externo) só pra não precisar listar uma função recriada a
+  // cada render como dependência do useMemo, o que invalidaria o cache
+  // sempre — o resultado matemático é idêntico.
+  const fieldGeometryLayer = useMemo(() => {
+    const ydLocal = (yards: number) => yards * pixelsPerYard;
+    return (
+      <Layer listening={false}>
+        <FieldTurf widthPx={fieldWidthPx} heightPx={fieldHeightPx} />
+        <Endzones
+          fieldWidthPx={fieldWidthPx}
+          fieldHeightPx={fieldHeightPx}
+          endzoneLengthPx={endzoneLengthPx}
+        />
+        <YardLines
+          yd={ydLocal}
+          fieldHeightPx={fieldHeightPx}
+          endzoneLengthPx={endzoneLengthPx}
+        />
+        <HashMarks
+          yd={ydLocal}
+          fieldHeightPx={fieldHeightPx}
+          endzoneLengthPx={endzoneLengthPx}
+          insetYards={hashMarkInsetYards}
+        />
+        <YardNumbers
+          yd={ydLocal}
+          fieldHeightPx={fieldHeightPx}
+          endzoneLengthPx={endzoneLengthPx}
+          pixelsPerYard={pixelsPerYard}
+        />
+        <FieldBorder widthPx={fieldWidthPx} heightPx={fieldHeightPx} />
+      </Layer>
+    );
+  }, [pixelsPerYard, fieldWidthPx, fieldHeightPx, endzoneLengthPx, hashMarkInsetYards]);
+
   return (
     <Stage
       ref={stageRef}
@@ -235,32 +275,7 @@ export function Field({ pixelsPerYard = PIXELS_PER_YARD }: FieldProps) {
       onMouseMove={handleStageMouseMove}
       onDblClick={handleStageDblClick}
     >
-      <Layer listening={false}>
-        <FieldTurf widthPx={fieldWidthPx} heightPx={fieldHeightPx} />
-        <Endzones
-          fieldWidthPx={fieldWidthPx}
-          fieldHeightPx={fieldHeightPx}
-          endzoneLengthPx={endzoneLengthPx}
-        />
-        <YardLines
-          yd={yd}
-          fieldHeightPx={fieldHeightPx}
-          endzoneLengthPx={endzoneLengthPx}
-        />
-        <HashMarks
-          yd={yd}
-          fieldHeightPx={fieldHeightPx}
-          endzoneLengthPx={endzoneLengthPx}
-          insetYards={hashMarkInsetYards}
-        />
-        <YardNumbers
-          yd={yd}
-          fieldHeightPx={fieldHeightPx}
-          endzoneLengthPx={endzoneLengthPx}
-          pixelsPerYard={pixelsPerYard}
-        />
-        <FieldBorder widthPx={fieldWidthPx} heightPx={fieldHeightPx} />
-      </Layer>
+      {fieldGeometryLayer}
       {/* Camada interativa: separada do fundo estático (listening={false}
           acima) para que só os jogadores capturem eventos de arraste. Só é
           "draggable" no modo 'move' — nos modos de desenho o clique inicia

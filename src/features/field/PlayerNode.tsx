@@ -1,3 +1,4 @@
+import { memo, useCallback } from 'react';
 import type Konva from 'konva';
 import { Circle, Group, Text } from 'react-konva';
 import { PIXELS_PER_YARD } from '../../utils/constants';
@@ -33,6 +34,30 @@ const snapToGrid = (pos: { x: number; y: number }) => {
   };
 };
 
+// Restringe a posição já durante o arraste (não só ao soltar), para que o
+// jogador nunca visualmente escape do campo em nenhum frame intermediário —
+// e então encaixa no grid de 1/4 de jarda. Clamp primeiro, snap depois:
+// assim o limite do campo continua valendo mesmo perto das bordas. Hoisted
+// pra fora do componente: não depende de nenhum player específico, então
+// recriar por instância só geraria uma nova referência de função a cada
+// render (quebrando a comparação rasa de props do React.memo abaixo à toa).
+const dragBoundFunc = (pos: { x: number; y: number }) =>
+  snapToGrid({
+    x: clamp(pos.x, 0, FIELD_BOUNDS_PX.maxX),
+    y: clamp(pos.y, 0, FIELD_BOUNDS_PX.maxY),
+  });
+
+// Mesma lógica do dragBoundFunc acima: não dependem de props/estado do
+// jogador, então vivem fora do componente para manter uma referência
+// estável entre renders.
+function handleMouseEnter() {
+  document.body.style.cursor = 'pointer';
+}
+
+function handleMouseLeave() {
+  document.body.style.cursor = 'default';
+}
+
 interface PlayerNodeProps {
   player: Player;
   /** Só arrastável no modo 'move' — em 'route'/'block' o clique no jogador
@@ -44,34 +69,32 @@ interface PlayerNodeProps {
  * Nó gráfico de um jogador: círculo colorido por time + sigla da posição.
  * A posição é lida da store em JARDAS e convertida para pixels apenas aqui,
  * na borda de renderização — o resto do app nunca pensa em pixels.
+ *
+ * `memo`'d porque Field.tsx re-renderiza (via Zustand) a cada mousemove
+ * durante um desenho — sem isso, os 22 jogadores reexecutariam a função de
+ * render inteira a cada frame só porque o componente-pai renderizou de
+ * novo, mesmo com `player`/`draggable` inalterados.
  */
-export function PlayerNode({ player, draggable }: PlayerNodeProps) {
+export const PlayerNode = memo(function PlayerNode({ player, draggable }: PlayerNodeProps) {
   const updatePlayerPosition = useFieldStore((state) => state.updatePlayerPosition);
   const updatePlayerLabel = useFieldStore((state) => state.updatePlayerLabel);
 
   const radiusPx = PLAYER_RADIUS_YARDS * PIXELS_PER_YARD;
 
-  // Restringe a posição já durante o arraste (não só ao soltar), para que o
-  // jogador nunca visualmente escape do campo em nenhum frame intermediário
-  // — e então encaixa no grid de 1/4 de jarda. Clamp primeiro, snap depois:
-  // assim o limite do campo continua valendo mesmo perto das bordas.
-  const dragBoundFunc = (pos: { x: number; y: number }) =>
-    snapToGrid({
-      x: clamp(pos.x, 0, FIELD_BOUNDS_PX.maxX),
-      y: clamp(pos.y, 0, FIELD_BOUNDS_PX.maxY),
-    });
+  const handleDragEnd = useCallback(
+    (e: Konva.KonvaEventObject<DragEvent>) => {
+      const xPx = e.target.x();
+      const yPx = e.target.y();
 
-  const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
-    const xPx = e.target.x();
-    const yPx = e.target.y();
+      // Pixels -> jardas reais, com clamp de segurança (0-120 x, 0-53.33 y)
+      // independente do dragBoundFunc já ter restringido o arraste em si.
+      const xYards = clamp(xPx / PIXELS_PER_YARD, 0, FIELD_LENGTH_YARDS);
+      const yYards = clamp(yPx / PIXELS_PER_YARD, 0, FIELD_WIDTH_YARDS);
 
-    // Pixels -> jardas reais, com clamp de segurança (0-120 x, 0-53.33 y)
-    // independente do dragBoundFunc já ter restringido o arraste em si.
-    const xYards = clamp(xPx / PIXELS_PER_YARD, 0, FIELD_LENGTH_YARDS);
-    const yYards = clamp(yPx / PIXELS_PER_YARD, 0, FIELD_WIDTH_YARDS);
-
-    updatePlayerPosition(player.id, xYards, yYards);
-  };
+      updatePlayerPosition(player.id, xYards, yYards);
+    },
+    [player.id, updatePlayerPosition],
+  );
 
   // Duplo-clique renomeia a sigla via prompt nativo — mas só faz sentido no
   // modo 'move' (draggable=true). Em qualquer modo de desenho, o usuário
@@ -80,27 +103,22 @@ export function PlayerNode({ player, draggable }: PlayerNodeProps) {
   // duplo-clique nunca chegaria ao Stage e finishDrawing() nunca rodaria,
   // deixando o desenho travado "em andamento" pra sempre. Por isso só
   // cancela o bubbling (e abre o prompt) quando não há desenho possível.
-  const handleDblClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    if (!draggable) return;
+  const handleDblClick = useCallback(
+    (e: Konva.KonvaEventObject<MouseEvent>) => {
+      if (!draggable) return;
 
-    e.cancelBubble = true;
+      e.cancelBubble = true;
 
-    const newLabel = window.prompt('Nova sigla (máx 3 letras):', player.label);
-    if (newLabel === null) return; // usuário cancelou o prompt
+      const newLabel = window.prompt('Nova sigla (máx 3 letras):', player.label);
+      if (newLabel === null) return; // usuário cancelou o prompt
 
-    const trimmedLabel = newLabel.trim().substring(0, 3).toUpperCase();
-    if (!trimmedLabel) return; // confirmado em branco — não faz sentido aplicar
+      const trimmedLabel = newLabel.trim().substring(0, 3).toUpperCase();
+      if (!trimmedLabel) return; // confirmado em branco — não faz sentido aplicar
 
-    updatePlayerLabel(player.id, trimmedLabel);
-  };
-
-  const handleMouseEnter = () => {
-    document.body.style.cursor = 'pointer';
-  };
-
-  const handleMouseLeave = () => {
-    document.body.style.cursor = 'default';
-  };
+      updatePlayerLabel(player.id, trimmedLabel);
+    },
+    [draggable, player.id, player.label, updatePlayerLabel],
+  );
 
   return (
     <Group
@@ -136,4 +154,4 @@ export function PlayerNode({ player, draggable }: PlayerNodeProps) {
       />
     </Group>
   );
-}
+});
