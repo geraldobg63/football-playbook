@@ -214,9 +214,14 @@ export function Field({ pixelsPerYard = PIXELS_PER_YARD }: FieldProps) {
     const releasedGroup = e.target.findAncestor('Group', true);
     if (releasedGroup?.id() === dragStart.playerId) return;
 
+    // O arraste só faz o papel do PRIMEIRO clique (usando o ponto de soltura
+    // como pull inicial) — não finaliza sozinho. Assim o desenho continua
+    // "aberto" exatamente como se tivesse começado por clique normal: dá pra
+    // seguir clicando pra adicionar quebras, e o duplo-clique finaliza como
+    // sempre. Sem isso, quem começa arrastando nunca consegue quebrar a rota
+    // depois, porque finishDrawing() já teria fechado tudo aqui.
     const { x, y } = pointerToYards(pointerPx);
     startDrawing(dragStart.type, dragStart.playerId, dragStart.anchorXYards, dragStart.anchorYYards, x, y);
-    finishDrawing();
   };
 
   return (
