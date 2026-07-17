@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useEffect } from 'react';
 import type Konva from 'konva';
 import { Circle, Group, Text } from 'react-konva';
 import { PIXELS_PER_YARD } from '../../utils/constants';
@@ -80,6 +80,18 @@ export const PlayerNode = memo(function PlayerNode({ player, draggable }: Player
   const updatePlayerLabel = useFieldStore((state) => state.updatePlayerLabel);
 
   const radiusPx = PLAYER_RADIUS_YARDS * PIXELS_PER_YARD;
+
+  // handleMouseEnter/handleMouseLeave escrevem direto em document.body —
+  // fora do controle do React. Hoje os 22 jogadores nunca desmontam de
+  // verdade (formações só reposicionam), mas se algum dia um Group
+  // desmontar enquanto o mouse ainda estiver sobre ele, handleMouseLeave
+  // nunca dispararia e o cursor 'pointer' ficaria preso pra sempre. Este
+  // cleanup é a rede de segurança pra esse cenário.
+  useEffect(() => {
+    return () => {
+      document.body.style.cursor = 'default';
+    };
+  }, []);
 
   const handleDragEnd = useCallback(
     (e: Konva.KonvaEventObject<DragEvent>) => {

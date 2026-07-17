@@ -46,7 +46,6 @@ interface FieldState {
   players: Player[];
   updatePlayerPosition: (id: string, x: number, y: number) => void;
   updatePlayerLabel: (id: string, newLabel: string) => void;
-  resetFormations: () => void;
   setOffensiveFormation: (formationName: string) => void;
   setDefensiveFormation: (formationName: string) => void;
   drawingMode: DrawingMode;
@@ -170,8 +169,6 @@ export const useFieldStore = create<FieldState>((set) => ({
         player.id === id ? { ...player, label: newLabel } : player,
       ),
     })),
-  resetFormations: () =>
-    set({ players: createDefaultFormation(), assignments: [], activePlayName: null }),
   setOffensiveFormation: (formationName) =>
     set((state) => {
       const formation = OFFENSIVE_FORMATIONS[formationName];
