@@ -23,11 +23,13 @@ const DRAWING_MODE_LABELS: Record<DrawingMode, string> = {
   erase: 'Borracha',
 };
 
-// Só os modos com interações não-óbvias (multi-clique, atalhos) ganham
-// tooltip — "Arrastar Jogadores" e "Desenhar Bloqueio" já se explicam pelo
-// próprio rótulo do botão.
+// Todo modo de desenho ganha tooltip agora — mesmo os que pareciam
+// autoexplicativos pelo rótulo do botão, já que "clicar e arrastar" vs.
+// "clicar/quebrar/duplo-clique" não é óbvio só pelo nome.
 const DRAWING_MODE_TOOLTIPS: Partial<Record<DrawingMode, string>> = {
+  move: 'Clique e arraste o jogador até a posição desejada',
   route: 'Clique para quebrar, Duplo clique para finalizar',
+  block: 'Clique para quebrar, Duplo clique para finalizar',
   motion: 'Movimento pré-snap (Tracejado)',
   zone: 'Criar Cobertura (Clique no campo)',
   erase: 'Apagar Vetor (Clique na linha)',
@@ -35,6 +37,12 @@ const DRAWING_MODE_TOOLTIPS: Partial<Record<DrawingMode, string>> = {
 
 const OFFENSIVE_FORMATION_NAMES = Object.keys(OFFENSIVE_FORMATIONS);
 const DEFENSIVE_FORMATION_NAMES = Object.keys(DEFENSIVE_FORMATIONS);
+
+// Estilo compartilhado por todo botão clicável do app: anel de foco e
+// "afundar" no clique. `transition-all` (em vez de só transition-colors)
+// porque agora também anima a escala do active:scale.
+const INTERACTIVE_BUTTON_CLASSES =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lobos-gold-400 active:scale-[0.97] transition-all';
 
 /**
  * Barra lateral (direita em telas médias+, empilhada abaixo do campo em
@@ -67,33 +75,31 @@ export function FieldControls() {
   };
 
   return (
-    <div className="flex w-full shrink-0 flex-col items-start gap-3 overflow-x-visible overflow-y-auto border-t border-slate-800 bg-slate-900 p-3 shadow-lg md:h-screen md:w-72 md:border-t-0 md:border-l">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex gap-2">
-          {FIELD_RULES.map((rule) => (
-            <button
-              key={rule}
-              type="button"
-              onClick={() => setFieldRule(rule)}
-              aria-pressed={fieldRule === rule}
-              className={`rounded px-3 py-1.5 text-sm font-semibold transition-colors ${
-                fieldRule === rule
-                  ? 'bg-emerald-500 text-white'
-                  : 'bg-slate-700 text-slate-200 hover:bg-slate-600'
-              }`}
-            >
-              {FIELD_RULE_LABELS[rule]}
-            </button>
-          ))}
-        </div>
+    <div className="flex w-full shrink-0 flex-col items-start gap-3 overflow-x-visible overflow-y-auto border-t border-white/5 bg-lobos-navy-900 p-3 shadow-lg md:h-screen md:w-72 md:border-t-0 md:border-l">
+      <ToolbarSection label="Regras">
+        {FIELD_RULES.map((rule) => (
+          <button
+            key={rule}
+            type="button"
+            onClick={() => setFieldRule(rule)}
+            aria-pressed={fieldRule === rule}
+            className={`rounded px-3 py-1.5 text-sm font-semibold ${INTERACTIVE_BUTTON_CLASSES} ${
+              fieldRule === rule
+                ? 'bg-lobos-gold-500 text-lobos-navy-950'
+                : 'bg-lobos-navy-800 text-slate-300 hover:bg-lobos-navy-700'
+            }`}
+          >
+            {FIELD_RULE_LABELS[rule]}
+          </button>
+        ))}
+      </ToolbarSection>
 
-        <div className="h-6 w-px bg-slate-600" />
-
+      <ToolbarSection label="Ações">
         <button
           type="button"
           onClick={() => exportFieldToPng()}
           disabled={isExporting}
-          className="flex items-center gap-1.5 rounded bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+          className={`flex items-center gap-1.5 rounded bg-lobos-gold-500 px-3 py-1.5 text-sm font-semibold text-lobos-navy-950 hover:bg-lobos-gold-400 disabled:cursor-not-allowed disabled:bg-lobos-navy-800 disabled:text-slate-500 ${INTERACTIVE_BUTTON_CLASSES}`}
         >
           <DownloadIcon />
           {isExporting ? 'Exportando…' : 'Exportar PNG'}
@@ -102,19 +108,19 @@ export function FieldControls() {
         <button
           type="button"
           onClick={() => clearAllAssignments()}
-          className="rounded bg-red-700 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-red-600"
+          className={`rounded bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-500 ${INTERACTIVE_BUTTON_CLASSES}`}
         >
           Limpar Desenhos
         </button>
-      </div>
+      </ToolbarSection>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <ToolbarSection label="Formação">
         <label className="flex items-center gap-1.5 text-sm font-semibold text-blue-300">
           Ataque
           <select
             value={offenseFormation}
             onChange={(e) => handleOffenseChange(e.target.value)}
-            className="rounded border border-blue-800 bg-slate-800 px-2 py-1.5 text-sm font-semibold text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            className="rounded border border-white/10 bg-lobos-navy-800 px-2 py-1.5 text-sm font-semibold text-white focus:ring-2 focus:ring-lobos-gold-400 focus:outline-none"
           >
             {OFFENSIVE_FORMATION_NAMES.map((name) => (
               <option key={name} value={name}>
@@ -129,7 +135,7 @@ export function FieldControls() {
           <select
             value={defenseFormation}
             onChange={(e) => handleDefenseChange(e.target.value)}
-            className="rounded border border-red-800 bg-slate-800 px-2 py-1.5 text-sm font-semibold text-white focus:ring-2 focus:ring-red-500 focus:outline-none"
+            className="rounded border border-white/10 bg-lobos-navy-800 px-2 py-1.5 text-sm font-semibold text-white focus:ring-2 focus:ring-lobos-gold-400 focus:outline-none"
           >
             {DEFENSIVE_FORMATION_NAMES.map((name) => (
               <option key={name} value={name}>
@@ -138,46 +144,57 @@ export function FieldControls() {
             ))}
           </select>
         </label>
-      </div>
+      </ToolbarSection>
 
-      <div role="radiogroup" aria-label="Ferramenta de desenho" className="flex flex-wrap gap-2">
-        {DRAWING_MODES.map((mode) => {
-          const tooltip = DRAWING_MODE_TOOLTIPS[mode];
-          return (
-            <div key={mode} className="group relative">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={drawingMode === mode}
-                onClick={() => setDrawingMode(mode)}
-                className={`rounded px-3 py-1.5 text-sm font-semibold transition-colors ${
-                  drawingMode === mode
-                    ? 'bg-sky-500 text-white'
-                    : 'bg-slate-700 text-slate-200 hover:bg-slate-600'
-                }`}
-              >
-                {DRAWING_MODE_LABELS[mode]}
-              </button>
-              {tooltip && (
-                // pointer-events-none é obrigatório aqui: o tooltip flutua
-                // para a ESQUERDA, sobre a área do Canvas. Sem isso, ele
-                // "rouba" os cliques que o usuário dá no campo para
-                // desenhar rota/bloqueio/motion assim que o cursor passa
-                // por cima dele a caminho do Stage — foi exatamente essa
-                // regressão que quebrou o desenho. O pequeno efeito
-                // colateral (o tooltip pode sumir se o cursor parar
-                // *exatamente* sobre o próprio texto dele, já que o hover
-                // "vaza" para o que está atrás) é um trade-off aceitável
-                // frente a bloquear o desenho por completo. `top-0` segue
-                // valendo para alinhar verticalmente com o botão.
-                <div className="pointer-events-none absolute top-0 right-full z-50 mr-3 hidden w-48 rounded bg-slate-950 p-3 text-sm text-white break-words whitespace-normal shadow-lg group-hover:block">
-                  {tooltip}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+      <ToolbarSection label="Ferramentas">
+        <div role="radiogroup" aria-label="Ferramenta de desenho" className="flex flex-wrap gap-2">
+          {DRAWING_MODES.map((mode) => {
+            const tooltip = DRAWING_MODE_TOOLTIPS[mode];
+            return (
+              <div key={mode} className="group relative">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={drawingMode === mode}
+                  onClick={() => setDrawingMode(mode)}
+                  className={`rounded px-3 py-1.5 text-sm font-semibold ${INTERACTIVE_BUTTON_CLASSES} ${
+                    drawingMode === mode
+                      ? 'bg-lobos-gold-500 text-lobos-navy-950'
+                      : 'bg-lobos-navy-800 text-slate-300 hover:bg-lobos-navy-700'
+                  }`}
+                >
+                  {DRAWING_MODE_LABELS[mode]}
+                </button>
+                {tooltip && (
+                  // pointer-events-none é obrigatório aqui: o tooltip flutua
+                  // para a ESQUERDA, sobre a área do Canvas. Sem isso, ele
+                  // "rouba" os cliques que o usuário dá no campo para
+                  // desenhar rota/bloqueio/motion assim que o cursor passa
+                  // por cima dele a caminho do Stage — foi exatamente essa
+                  // regressão que quebrou o desenho numa rodada anterior.
+                  // opacity (em vez de hidden/block) dá uma transição suave
+                  // de entrada/saída em vez do "flash" instantâneo de antes.
+                  <div className="pointer-events-none absolute top-0 right-full z-50 mr-3 w-48 rounded bg-lobos-navy-950 p-3 text-sm text-white break-words whitespace-normal opacity-0 shadow-lg transition-opacity duration-200 group-hover:opacity-100">
+                    {tooltip}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </ToolbarSection>
+    </div>
+  );
+}
+
+/** Agrupa um bloco da toolbar sob um micro-label — quebra a antiga "parede
+ * de botões" indiferenciada em seções escaneáveis. `first:` remove a borda/
+ * padding superior da primeira seção, que não precisa de separador. */
+function ToolbarSection({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex w-full flex-col gap-2 border-t border-white/5 pt-3 first:border-t-0 first:pt-0">
+      <span className="text-xs font-semibold tracking-wide text-slate-500 uppercase">{label}</span>
+      <div className="flex flex-wrap items-center gap-2">{children}</div>
     </div>
   );
 }

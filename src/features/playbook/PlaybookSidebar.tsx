@@ -9,6 +9,12 @@ const CATEGORY_LABELS: Record<Play['category'], string> = {
   special: 'Times Especiais',
 };
 
+// Mesmo tratamento de foco/clique aplicado em todo botão do app (ver
+// FieldControls.tsx) — mantido aqui como constante local pra não criar um
+// import cruzado entre features só por causa de uma string de classes.
+const INTERACTIVE_BUTTON_CLASSES =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lobos-gold-400 active:scale-[0.97] transition-all';
+
 /**
  * Painel lateral de persistência: salva o estado atual do campo como uma
  * `Play` (nome + categoria) e lista as jogadas já salvas, agrupadas por
@@ -31,14 +37,19 @@ export function PlaybookSidebar() {
     setName('');
   };
 
+  const handleDelete = (play: Play) => {
+    if (!window.confirm(`Tem certeza que deseja excluir a jogada "${play.name}"?`)) return;
+    deletePlay(play.id);
+  };
+
   const playsByCategory = CATEGORY_ORDER.map((cat) => ({
     category: cat,
     plays: savedPlays.filter((play) => play.category === cat),
   }));
 
   return (
-    <aside className="flex h-auto max-h-[45vh] w-full shrink-0 flex-col border-b border-slate-800 bg-slate-900 text-slate-100 md:h-screen md:max-h-none md:w-80 md:border-r md:border-b-0">
-      <div className="flex flex-col gap-3 border-b border-slate-800 p-4">
+    <aside className="flex h-auto max-h-[45vh] w-full shrink-0 flex-col border-b border-white/5 bg-lobos-navy-900 text-slate-100 md:h-screen md:max-h-none md:w-80 md:border-r md:border-b-0">
+      <div className="flex flex-col gap-3 border-b border-white/5 p-4">
         <h2 className="text-lg font-bold">Playbook</h2>
 
         <label className="flex flex-col gap-1 text-sm text-slate-300">
@@ -49,7 +60,7 @@ export function PlaybookSidebar() {
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSave()}
             placeholder="Ex.: Slant Direita"
-            className="rounded border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-500"
+            className="rounded border border-white/10 bg-lobos-navy-800 px-2 py-1.5 text-sm text-white placeholder:text-slate-500 focus:ring-2 focus:ring-lobos-gold-400 focus:outline-none"
           />
         </label>
 
@@ -58,7 +69,7 @@ export function PlaybookSidebar() {
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value as Play['category'])}
-            className="rounded border border-slate-700 bg-slate-800 px-2 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+            className="rounded border border-white/10 bg-lobos-navy-800 px-2 py-1.5 text-sm text-white focus:ring-2 focus:ring-lobos-gold-400 focus:outline-none"
           >
             {CATEGORY_ORDER.map((cat) => (
               <option key={cat} value={cat}>
@@ -72,7 +83,7 @@ export function PlaybookSidebar() {
           type="button"
           onClick={handleSave}
           disabled={!name.trim()}
-          className="rounded bg-emerald-500 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+          className={`rounded bg-lobos-gold-500 px-3 py-1.5 text-sm font-semibold text-lobos-navy-950 hover:bg-lobos-gold-400 disabled:cursor-not-allowed disabled:bg-lobos-navy-800 disabled:text-slate-500 ${INTERACTIVE_BUTTON_CLASSES}`}
         >
           Salvar Jogada
         </button>
@@ -94,7 +105,7 @@ export function PlaybookSidebar() {
                   {plays.map((play) => (
                     <li
                       key={play.id}
-                      className="flex items-center justify-between gap-2 rounded bg-slate-800 px-2.5 py-1.5"
+                      className="flex items-center justify-between gap-2 rounded bg-lobos-navy-800 px-2.5 py-1.5"
                     >
                       <span className="truncate text-sm" title={play.name}>
                         {play.name}
@@ -103,14 +114,14 @@ export function PlaybookSidebar() {
                         <button
                           type="button"
                           onClick={() => loadPlay(play.id)}
-                          className="rounded bg-sky-600 px-2 py-1 text-xs font-semibold text-white transition-colors hover:bg-sky-500"
+                          className={`rounded bg-lobos-gold-500 px-2 py-1 text-xs font-semibold text-lobos-navy-950 hover:bg-lobos-gold-400 ${INTERACTIVE_BUTTON_CLASSES}`}
                         >
                           Carregar
                         </button>
                         <button
                           type="button"
-                          onClick={() => deletePlay(play.id)}
-                          className="rounded bg-red-700 px-2 py-1 text-xs font-semibold text-white transition-colors hover:bg-red-600"
+                          onClick={() => handleDelete(play)}
+                          className={`rounded bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-500 ${INTERACTIVE_BUTTON_CLASSES}`}
                         >
                           Excluir
                         </button>

@@ -1,4 +1,25 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/*
+ * Identidade "Uberlândia Lobos": azul-marinho como superfície/fundo,
+ * dourado vibrante como único acento de estado ativo/foco. Definido via
+ * @theme (Tailwind v4 é CSS-first) para gerar utilitários normais
+ * (bg-lobos-navy-900, text-lobos-gold-500, etc.) em vez de cores soltas
+ * espalhadas pelos componentes.
+ */
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  --color-lobos-navy-950: #05070f;
+  --color-lobos-navy-900: #0b1220;
+  --color-lobos-navy-800: #131c30;
+  --color-lobos-navy-700: #1c2740;
+
+  --color-lobos-gold-400: #f3cf6b;
+  --color-lobos-gold-500: #e0ac2c;
+  --color-lobos-gold-600: #bf8f1f;
+}
 
 html,
 body,
@@ -8,5 +29,9 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background-color: #0f172a;
+  background-color: var(--color-lobos-navy-950);
+}
+
+body {
+  font-family: var(--font-sans);
 }
