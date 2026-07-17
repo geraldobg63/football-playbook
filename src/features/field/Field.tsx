@@ -166,7 +166,7 @@ export function Field({ pixelsPerYard = PIXELS_PER_YARD }: FieldProps) {
     anchorYYards: number;
     downPointerPx: { x: number; y: number };
   } | null>(null);
-  const DRAG_THRESHOLD_PX = 6;
+  const DRAG_THRESHOLD_PX = 20;
 
   const handleStageMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
     if (!isDrawingMode(drawingMode) || drawingMode === 'zone' || activeDrawingId) return;
@@ -203,6 +203,16 @@ export function Field({ pixelsPerYard = PIXELS_PER_YARD }: FieldProps) {
       pointerPx.y - dragStart.downPointerPx.y,
     );
     if (movedPx < DRAG_THRESHOLD_PX) return; // sem arraste real: o onClick normal cuida do clique
+
+    // Se soltou em cima do MESMO jogador onde começou, Konva ainda vai
+    // sintetizar um 'click' pra esse gesto (down-target === up-target) —
+    // deixar esse click seguir seu fluxo normal (início da polilinha) em vez
+    // de TAMBÉM finalizar aqui, senão os dois disparam em sequência: o
+    // arraste fecha o desenho, e o click logo depois reabre um novo por
+    // cima, deixando um desenho fantasma "em andamento" e quebrando a
+    // dinâmica de quebras (clique-clique-duplo-clique).
+    const releasedGroup = e.target.findAncestor('Group', true);
+    if (releasedGroup?.id() === dragStart.playerId) return;
 
     const { x, y } = pointerToYards(pointerPx);
     startDrawing(dragStart.type, dragStart.playerId, dragStart.anchorXYards, dragStart.anchorYYards, x, y);
