@@ -148,12 +148,75 @@ export function Field({ pixelsPerYard = PIXELS_PER_YARD }: FieldProps) {
     finishDrawing();
   };
 
+  // Konva só sintetiza 'click' quando mousedown E mouseup caem na MESMA
+  // forma — um arraste real (mousedown num jogador, solta em outro ponto)
+  // não dispara click nenhum, e o fluxo baseado em onClick abaixo fica
+  // inteiramente mudo. Como "clicar e arrastar" é o jeito mais intuitivo de
+  // desenhar uma linha, capturamos esse gesto aqui via mousedown/mouseup
+  // brutos: se o ponteiro se moveu além de um limiar entre os dois, tratamos
+  // como arraste e criamos a linha reta (início -> soltura) num único gesto,
+  // sem depender do modelo de múltiplos cliques. Só entra em jogo ao
+  // INICIAR um desenho (activeDrawingId ainda nulo) — nunca interfere com
+  // uma polilinha já em andamento nem com o modo 'zone' (que não parte de
+  // um jogador).
+  const dragStartRef = useRef<{
+    type: 'route' | 'block' | 'motion';
+    playerId: string;
+    anchorXYards: number;
+    anchorYYards: number;
+    downPointerPx: { x: number; y: number };
+  } | null>(null);
+  const DRAG_THRESHOLD_PX = 6;
+
+  const handleStageMouseDown = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (!isDrawingMode(drawingMode) || drawingMode === 'zone' || activeDrawingId) return;
+
+    const stage = e.target.getStage();
+    const pointerPx = stage?.getPointerPosition();
+    if (!pointerPx) return;
+
+    const clickedGroup = e.target.findAncestor('Group', true);
+    const clickedPlayerId = clickedGroup?.id();
+    const player = players.find((candidate) => candidate.id === clickedPlayerId);
+    if (!player) return;
+
+    dragStartRef.current = {
+      type: drawingMode,
+      playerId: player.id,
+      anchorXYards: player.x,
+      anchorYYards: player.y,
+      downPointerPx: pointerPx,
+    };
+  };
+
+  const handleStageMouseUp = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    const dragStart = dragStartRef.current;
+    dragStartRef.current = null;
+    if (!dragStart) return;
+
+    const stage = e.target.getStage();
+    const pointerPx = stage?.getPointerPosition();
+    if (!pointerPx) return;
+
+    const movedPx = Math.hypot(
+      pointerPx.x - dragStart.downPointerPx.x,
+      pointerPx.y - dragStart.downPointerPx.y,
+    );
+    if (movedPx < DRAG_THRESHOLD_PX) return; // sem arraste real: o onClick normal cuida do clique
+
+    const { x, y } = pointerToYards(pointerPx);
+    startDrawing(dragStart.type, dragStart.playerId, dragStart.anchorXYards, dragStart.anchorYYards, x, y);
+    finishDrawing();
+  };
+
   return (
     <Stage
       ref={stageRef}
       width={fieldWidthPx}
       height={fieldHeightPx}
       onClick={handleStageClick}
+      onMouseDown={handleStageMouseDown}
+      onMouseUp={handleStageMouseUp}
       onMouseMove={handleStageMouseMove}
       onDblClick={handleStageDblClick}
     >
