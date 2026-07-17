@@ -73,10 +73,16 @@ export function PlayerNode({ player, draggable }: PlayerNodeProps) {
     updatePlayerPosition(player.id, xYards, yYards);
   };
 
-  // Duplo-clique renomeia a sigla via prompt nativo. `cancelBubble` evita
-  // que o mesmo duplo-clique também suba até o Stage e dispare o
-  // finishDrawing() de uma rota em andamento (ver Field.tsx).
+  // Duplo-clique renomeia a sigla via prompt nativo — mas só faz sentido no
+  // modo 'move' (draggable=true). Em qualquer modo de desenho, o usuário
+  // naturalmente termina uma rota/bloqueio/motion dando duplo-clique NO
+  // jogador de destino: se interceptássemos aqui incondicionalmente, esse
+  // duplo-clique nunca chegaria ao Stage e finishDrawing() nunca rodaria,
+  // deixando o desenho travado "em andamento" pra sempre. Por isso só
+  // cancela o bubbling (e abre o prompt) quando não há desenho possível.
   const handleDblClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (!draggable) return;
+
     e.cancelBubble = true;
 
     const newLabel = window.prompt('Nova sigla (máx 3 letras):', player.label);
