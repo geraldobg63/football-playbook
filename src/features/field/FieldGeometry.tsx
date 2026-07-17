@@ -1,5 +1,5 @@
-import { memo } from 'react';
-import { Layer, Rect, Line, Text } from 'react-konva';
+import { memo, useEffect, useState } from 'react';
+import { Layer, Rect, Line, Text, Image as KonvaImage } from 'react-konva';
 import type { FieldRule } from '../../utils/constants';
 import {
   FIELD_LENGTH_YARDS,
@@ -16,8 +16,17 @@ import {
 
 // Paleta puramente visual — não faz parte da matemática do campo.
 const TURF_GREEN = '#1c6b41';
-const ENDZONE_GREEN = '#0e4327';
 const LINE_WHITE = '#f5f5f0';
+
+// Servida direto de /public pelo Vite, sem import — mesma técnica dos
+// logos de liga em FieldControls.tsx.
+const LOBOS_LOGO_SRC = '/lobos.png';
+const LOBOS_LOGO_OPACITY = 0.6;
+// A End Zone é uma faixa estreita e alta (10 jardas de largura x ~53,33 de
+// altura) — a logo ocupa ~80% dela, preservando a proporção original do
+// arquivo (equivalente a um "object-fit: contain" pós-rotação).
+const LOBOS_LOGO_FILL_RATIO = 0.8;
+const LOBOS_LOGO_ROTATION_DEG = 90;
 
 interface FieldGeometryProps {
   pixelsPerYard: number;
@@ -49,12 +58,23 @@ export const FieldGeometry = memo(function FieldGeometry({
   const hashMarkInsetYards = HASH_MARK_INSET_YARDS_BY_RULE[fieldRule];
 
   return (
-    <Layer listening={false}>
+    <Layer listening={false} zIndex={0}>
       <FieldTurf widthPx={fieldWidthPx} heightPx={fieldHeightPx} />
-      <Endzones
-        fieldWidthPx={fieldWidthPx}
-        fieldHeightPx={fieldHeightPx}
-        endzoneLengthPx={endzoneLengthPx}
+      {/* Logos das End Zones: sem preenchimento sólido de cor por trás —
+          a logo É o design da End Zone agora. listening={false} tanto aqui
+          quanto na Layer (acima) garante que elas nunca capturem cliques
+          do treinador; a Layer inteira já nasce em zIndex 0 (fundo). */}
+      <EndzoneLogo
+        centerX={endzoneLengthPx / 2}
+        centerY={fieldHeightPx / 2}
+        endzoneWidthPx={endzoneLengthPx}
+        endzoneHeightPx={fieldHeightPx}
+      />
+      <EndzoneLogo
+        centerX={fieldWidthPx - endzoneLengthPx / 2}
+        centerY={fieldHeightPx / 2}
+        endzoneWidthPx={endzoneLengthPx}
+        endzoneHeightPx={fieldHeightPx}
       />
       <YardLines yd={yd} fieldHeightPx={fieldHeightPx} endzoneLengthPx={endzoneLengthPx} />
       <HashMarks
@@ -87,26 +107,72 @@ function FieldTurf({ widthPx, heightPx }: { widthPx: number; heightPx: number })
   return <Rect x={0} y={0} width={widthPx} height={heightPx} fill={TURF_GREEN} />;
 }
 
-function Endzones({
-  fieldWidthPx,
-  fieldHeightPx,
-  endzoneLengthPx,
+/** Carrega uma imagem via <img> nativo pro Konva Image poder desenhá-la —
+ * react-konva não busca URLs sozinho, precisa de um HTMLImageElement já
+ * carregado. `null` enquanto carrega; o chamador decide o que renderizar
+ * nesse meio-tempo. */
+function useHtmlImage(src: string): HTMLImageElement | null {
+  const [image, setImage] = useState<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    const img = new window.Image();
+    img.onload = () => setImage(img);
+    img.src = src;
+    return () => {
+      img.onload = null;
+    };
+  }, [src]);
+
+  return image;
+}
+
+/**
+ * Logo dos Lobos centralizada dentro de uma End Zone, girada 90° pra ficar
+ * legível na orientação vertical estreita da faixa (larga em Y, estreita em
+ * X). O tamanho parte da proporção NATURAL do arquivo (largura/altura reais
+ * da imagem carregada) — só escala até caber em ~80% da End Zone, nunca
+ * distorce. Não renderiza nada até a imagem carregar.
+ */
+function EndzoneLogo({
+  centerX,
+  centerY,
+  endzoneWidthPx,
+  endzoneHeightPx,
 }: {
-  fieldWidthPx: number;
-  fieldHeightPx: number;
-  endzoneLengthPx: number;
+  centerX: number;
+  centerY: number;
+  endzoneWidthPx: number;
+  endzoneHeightPx: number;
 }) {
+  const image = useHtmlImage(LOBOS_LOGO_SRC);
+  if (!image) return null;
+
+  // Pré-rotação, a LARGURA natural da imagem passa a ocupar o eixo Y da
+  // tela (altura da End Zone) depois de girar 90°, e a ALTURA natural passa
+  // a ocupar o eixo X (largura da End Zone) — por isso os alvos trocados
+  // aqui embaixo.
+  const targetScreenHeight = endzoneHeightPx * LOBOS_LOGO_FILL_RATIO;
+  const targetScreenWidth = endzoneWidthPx * LOBOS_LOGO_FILL_RATIO;
+  const scale = Math.min(
+    targetScreenHeight / image.naturalWidth,
+    targetScreenWidth / image.naturalHeight,
+  );
+  const displayWidth = image.naturalWidth * scale;
+  const displayHeight = image.naturalHeight * scale;
+
   return (
-    <>
-      <Rect x={0} y={0} width={endzoneLengthPx} height={fieldHeightPx} fill={ENDZONE_GREEN} />
-      <Rect
-        x={fieldWidthPx - endzoneLengthPx}
-        y={0}
-        width={endzoneLengthPx}
-        height={fieldHeightPx}
-        fill={ENDZONE_GREEN}
-      />
-    </>
+    <KonvaImage
+      image={image}
+      x={centerX}
+      y={centerY}
+      width={displayWidth}
+      height={displayHeight}
+      offsetX={displayWidth / 2}
+      offsetY={displayHeight / 2}
+      rotation={LOBOS_LOGO_ROTATION_DEG}
+      opacity={LOBOS_LOGO_OPACITY}
+      listening={false}
+    />
   );
 }
 
