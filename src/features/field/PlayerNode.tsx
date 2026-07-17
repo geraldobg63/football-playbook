@@ -20,6 +20,19 @@ const FIELD_BOUNDS_PX = {
   maxY: FIELD_WIDTH_YARDS * PIXELS_PER_YARD,
 };
 
+// Tamanho da célula do grid de "snap", em pixels — 1/4 de jarda. Fino o
+// bastante para não travar o posicionamento, mas ainda dá aquela sensação
+// de encaixe ao arrastar.
+const GRID_SIZE = PIXELS_PER_YARD * 0.25;
+
+/** Arredonda uma posição em pixels para o ponto de grid mais próximo. */
+const snapToGrid = (pos: { x: number; y: number }) => {
+  return {
+    x: Math.round(pos.x / GRID_SIZE) * GRID_SIZE,
+    y: Math.round(pos.y / GRID_SIZE) * GRID_SIZE,
+  };
+};
+
 interface PlayerNodeProps {
   player: Player;
   /** Só arrastável no modo 'move' — em 'route'/'block' o clique no jogador
@@ -39,11 +52,14 @@ export function PlayerNode({ player, draggable }: PlayerNodeProps) {
   const radiusPx = PLAYER_RADIUS_YARDS * PIXELS_PER_YARD;
 
   // Restringe a posição já durante o arraste (não só ao soltar), para que o
-  // jogador nunca visualmente escape do campo em nenhum frame intermediário.
-  const dragBoundFunc = (pos: { x: number; y: number }) => ({
-    x: clamp(pos.x, 0, FIELD_BOUNDS_PX.maxX),
-    y: clamp(pos.y, 0, FIELD_BOUNDS_PX.maxY),
-  });
+  // jogador nunca visualmente escape do campo em nenhum frame intermediário
+  // — e então encaixa no grid de 1/4 de jarda. Clamp primeiro, snap depois:
+  // assim o limite do campo continua valendo mesmo perto das bordas.
+  const dragBoundFunc = (pos: { x: number; y: number }) =>
+    snapToGrid({
+      x: clamp(pos.x, 0, FIELD_BOUNDS_PX.maxX),
+      y: clamp(pos.y, 0, FIELD_BOUNDS_PX.maxY),
+    });
 
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
     const xPx = e.target.x();

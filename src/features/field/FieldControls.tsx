@@ -37,10 +37,11 @@ const OFFENSIVE_FORMATION_NAMES = Object.keys(OFFENSIVE_FORMATIONS);
 const DEFENSIVE_FORMATION_NAMES = Object.keys(DEFENSIVE_FORMATIONS);
 
 /**
- * Painel flutuante sobre o Canvas: regra de campo ativa, formação de
- * ataque/defesa (personnel groupings), ferramenta de desenho e exportação
- * PNG. Puramente controlado pelo Zustand — o único estado local é qual
- * formação está selecionada em cada dropdown, só para exibição.
+ * Barra lateral (direita em telas médias+, empilhada abaixo do campo em
+ * telas pequenas): regra de campo ativa, formação de ataque/defesa
+ * (personnel groupings), ferramenta de desenho e exportação PNG. Puramente
+ * controlado pelo Zustand — o único estado local é qual formação está
+ * selecionada em cada dropdown, só para exibição.
  */
 export function FieldControls() {
   const fieldRule = useFieldStore((state) => state.fieldRule);
@@ -66,8 +67,8 @@ export function FieldControls() {
   };
 
   return (
-    <div className="absolute top-4 left-4 z-50 flex flex-col items-start gap-2 rounded-lg bg-slate-900/80 p-2 shadow-lg backdrop-blur">
-      <div className="flex items-center gap-3">
+    <div className="flex w-full shrink-0 flex-col items-start gap-3 overflow-x-visible overflow-y-auto border-t border-slate-800 bg-slate-900 p-3 shadow-lg md:h-screen md:w-72 md:border-t-0 md:border-l">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="flex gap-2">
           {FIELD_RULES.map((rule) => (
             <button
@@ -107,7 +108,7 @@ export function FieldControls() {
         </button>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-1.5 text-sm font-semibold text-blue-300">
           Ataque
           <select
@@ -139,7 +140,7 @@ export function FieldControls() {
         </label>
       </div>
 
-      <div role="radiogroup" aria-label="Ferramenta de desenho" className="flex gap-2">
+      <div role="radiogroup" aria-label="Ferramenta de desenho" className="flex flex-wrap gap-2">
         {DRAWING_MODES.map((mode) => {
           const tooltip = DRAWING_MODE_TOOLTIPS[mode];
           return (
@@ -158,7 +159,18 @@ export function FieldControls() {
                 {DRAWING_MODE_LABELS[mode]}
               </button>
               {tooltip && (
-                <div className="pointer-events-none absolute top-full left-1/2 z-50 mt-2 hidden w-max max-w-[220px] -translate-x-1/2 rounded bg-slate-950 px-2 py-1 text-xs text-white shadow-lg group-hover:block">
+                // pointer-events-none é obrigatório aqui: o tooltip flutua
+                // para a ESQUERDA, sobre a área do Canvas. Sem isso, ele
+                // "rouba" os cliques que o usuário dá no campo para
+                // desenhar rota/bloqueio/motion assim que o cursor passa
+                // por cima dele a caminho do Stage — foi exatamente essa
+                // regressão que quebrou o desenho. O pequeno efeito
+                // colateral (o tooltip pode sumir se o cursor parar
+                // *exatamente* sobre o próprio texto dele, já que o hover
+                // "vaza" para o que está atrás) é um trade-off aceitável
+                // frente a bloquear o desenho por completo. `top-0` segue
+                // valendo para alinhar verticalmente com o botão.
+                <div className="pointer-events-none absolute top-0 right-full z-50 mr-3 hidden w-48 rounded bg-slate-950 p-3 text-sm text-white break-words whitespace-normal shadow-lg group-hover:block">
                   {tooltip}
                 </div>
               )}

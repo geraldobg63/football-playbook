@@ -37,7 +37,7 @@ export function PlaybookSidebar() {
   }));
 
   return (
-    <aside className="flex h-screen w-80 shrink-0 flex-col border-r border-slate-800 bg-slate-900 text-slate-100">
+    <aside className="flex h-auto max-h-[45vh] w-full shrink-0 flex-col border-b border-slate-800 bg-slate-900 text-slate-100 md:h-screen md:max-h-none md:w-80 md:border-r md:border-b-0">
       <div className="flex flex-col gap-3 border-b border-slate-800 p-4">
         <h2 className="text-lg font-bold">Playbook</h2>
 
