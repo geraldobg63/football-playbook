@@ -21,8 +21,11 @@ const DL_X_YARDS = SCRIMMAGE_X_YARDS + 1; // linha defensiva, 1 jd à frente da 
 const CB_WIDE_Y_OFFSET_YARDS = 21.667; // alinhamento largo padrão dos corners/WRs externos
 
 // A linha ofensiva (5 ids) não muda de formato entre "personnel groupings" —
-// só os 6 jogadores restantes (QB + 5 skill) se movem.
-function offensiveLine(): FormationPosition[] {
+// só os 6 jogadores restantes (QB + 5 skill) se movem. Exportada porque
+// store/defaultFormation.ts reaproveita essas mesmas 5 posições pra montar
+// a formação inicial (que, na linha ofensiva, é idêntica ao "Pro Set" — só
+// o backfield/recebedores do default divergem intencionalmente).
+export function offensiveLine(): FormationPosition[] {
   return [
     { playerId: 'off-lt', x: OL_X_YARDS, y: CENTER_Y_YARDS - 4 },
     { playerId: 'off-lg', x: OL_X_YARDS, y: CENTER_Y_YARDS - 2 },

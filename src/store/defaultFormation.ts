@@ -1,5 +1,6 @@
 import type { Player } from './useFieldStore';
 import { FIELD_WIDTH_YARDS } from '../features/field/constants';
+import { offensiveLine } from '../utils/formations';
 
 /**
  * Formação inicial: ataque pro-style (I-formation) alinhado contra uma
@@ -16,15 +17,32 @@ export function createDefaultFormation(): Player[] {
   return [...createOffense(), ...createDefense()];
 }
 
+// Rótulos/times dos 5 da linha ofensiva — as COORDENADAS vêm de
+// offensiveLine() (utils/formations.ts), a mesma usada pelo "Pro Set", já
+// que a linha ofensiva do default É idêntica à do Pro Set. O backfield/
+// recebedores abaixo continuam com coordenadas próprias: divergem de
+// propósito do "Pro Set" (I-formation clássica em vez de backfield lado a
+// lado), então não fazem sentido compartilhados.
+const OFFENSIVE_LINE_META: Record<string, { label: string }> = {
+  'off-lt': { label: 'LT' },
+  'off-lg': { label: 'LG' },
+  'off-c': { label: 'C' },
+  'off-rg': { label: 'RG' },
+  'off-rt': { label: 'RT' },
+};
+
 function createOffense(): Player[] {
   const y = FIELD_CENTER_Y_YARDS;
   const lineX = SCRIMMAGE_X_YARDS - 1; // linha ofensiva 1 jd atrás da bola
+  const line: Player[] = offensiveLine().map((pos) => ({
+    id: pos.playerId,
+    label: OFFENSIVE_LINE_META[pos.playerId].label,
+    team: 'offense',
+    x: pos.x,
+    y: pos.y,
+  }));
   return [
-    { id: 'off-lt', label: 'LT', team: 'offense', x: lineX, y: y - 4 },
-    { id: 'off-lg', label: 'LG', team: 'offense', x: lineX, y: y - 2 },
-    { id: 'off-c', label: 'C', team: 'offense', x: lineX, y },
-    { id: 'off-rg', label: 'RG', team: 'offense', x: lineX, y: y + 2 },
-    { id: 'off-rt', label: 'RT', team: 'offense', x: lineX, y: y + 4 },
+    ...line,
     { id: 'off-te', label: 'TE', team: 'offense', x: lineX, y: y + 6.5 },
     { id: 'off-qb', label: 'QB', team: 'offense', x: SCRIMMAGE_X_YARDS - 3, y },
     { id: 'off-fb', label: 'FB', team: 'offense', x: SCRIMMAGE_X_YARDS - 7, y },
