@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 import type { FieldRule } from '../utils/constants';
 import { createDefaultFormation } from './defaultFormation';
-import { loadSavedPlays, persistSavedPlays } from './playbookStorage';
+import {
+  loadSavedPlays,
+  persistSavedPlays,
+  loadSavedFolders,
+  persistFolders,
+} from './playbookStorage';
 import { OFFENSIVE_FORMATIONS, DEFENSIVE_FORMATIONS, type FormationPosition } from '../utils/formations';
 
 export type Team = 'offense' | 'defense';
@@ -30,10 +35,22 @@ export interface Assignment {
   points: number[];
 }
 
+/** Organização hierárquica das jogadas salvas — preparação pra um futuro
+ * sistema de usuários (cada conta poderá ter sua própria árvore de pastas).
+ * Por enquanto é só um nível (sem sub-pastas) persistido no localStorage. */
+export interface Folder {
+  id: string;
+  name: string;
+}
+
 export interface Play {
   id: string;
   name: string;
   category: 'offense' | 'defense' | 'special';
+  /** Pasta onde a jogada está guardada — `undefined` = "Raiz" (sem pasta).
+   * Nunca aponta pra uma pasta inexistente: deleteFolder realoca as jogadas
+   * da pasta excluída pra Raiz antes de remover a pasta em si. */
+  folderId?: string;
   fieldRule: FieldRule;
   players: Player[];
   assignments: Assignment[];
@@ -82,9 +99,15 @@ interface FieldState {
    * vez, sem tocar nos jogadores nem nas formações. */
   clearAllAssignments: () => void;
   savedPlays: Play[];
-  saveCurrentPlay: (name: string, category: Play['category']) => void;
+  saveCurrentPlay: (name: string, category: Play['category'], folderId?: string) => void;
   loadPlay: (id: string) => void;
   deletePlay: (id: string) => void;
+  folders: Folder[];
+  createFolder: (name: string) => void;
+  renameFolder: (id: string, newName: string) => void;
+  /** Remove a pasta e realoca suas jogadas pra Raiz (folderId: undefined) —
+   * excluir uma pasta nunca destrói as jogadas guardadas nela. */
+  deleteFolder: (id: string) => void;
   /** Nome da jogada atualmente carregada/salva — null se o campo foi
    * resetado ou editado sem corresponder a nenhuma jogada salva. Usado
    * para nomear o arquivo na exportação PNG. */
@@ -292,12 +315,13 @@ export const useFieldStore = create<FieldState>((set) => ({
   // primeira renderização do app já mostra as jogadas salvas anteriormente
   // — mesmo padrão usado para a formação padrão de jogadores acima.
   savedPlays: loadSavedPlays(),
-  saveCurrentPlay: (name, category) =>
+  saveCurrentPlay: (name, category, folderId) =>
     set((state) => {
       const newPlay: Play = {
         id: `play-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         name,
         category,
+        folderId,
         // Captura o estado EXATO no momento do clique — não uma referência
         // que continuaria mudando se o usuário seguisse editando o campo.
         fieldRule: state.fieldRule,
@@ -317,6 +341,9 @@ export const useFieldStore = create<FieldState>((set) => ({
       // saveCurrentPlay, então assignment.playerId já referencia os ids
       // corretos dos jogadores carregados — a ancoragem das linhas do
       // motor de desenho continua funcionando sem nenhum remapeamento.
+      // A pasta onde a jogada está guardada é irrelevante aqui: carregar
+      // sempre restaura fieldRule/players/assignments do mesmo jeito,
+      // dentro ou fora de uma pasta.
       return {
         fieldRule: play.fieldRule,
         players: play.players,
@@ -331,6 +358,39 @@ export const useFieldStore = create<FieldState>((set) => ({
       return { savedPlays };
     }),
   activePlayName: null,
+  // Mesmo padrão de hidratação de savedPlays acima: lida do localStorage já
+  // na criação da store.
+  folders: loadSavedFolders(),
+  createFolder: (name) =>
+    set((state) => {
+      const newFolder: Folder = {
+        id: `folder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name,
+      };
+      const folders = [...state.folders, newFolder];
+      persistFolders(folders);
+      return { folders };
+    }),
+  renameFolder: (id, newName) =>
+    set((state) => {
+      const folders = state.folders.map((folder) =>
+        folder.id === id ? { ...folder, name: newName } : folder,
+      );
+      persistFolders(folders);
+      return { folders };
+    }),
+  deleteFolder: (id) =>
+    set((state) => {
+      const folders = state.folders.filter((folder) => folder.id !== id);
+      persistFolders(folders);
+      // Realoca pra Raiz em vez de apagar junto — excluir uma pasta é uma
+      // ação de organização, não deveria também destruir jogadas guardadas.
+      const savedPlays = state.savedPlays.map((play) =>
+        play.folderId === id ? { ...play, folderId: undefined } : play,
+      );
+      persistSavedPlays(savedPlays);
+      return { folders, savedPlays };
+    }),
   isExporting: false,
   setIsExporting: (value) => set({ isExporting: value }),
 }));
