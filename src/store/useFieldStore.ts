@@ -2,11 +2,16 @@ import { create } from 'zustand';
 import type { FieldRule } from '../utils/constants';
 import { createDefaultFormation } from './defaultFormation';
 import {
-  loadSavedPlays,
-  persistSavedPlays,
-  loadSavedFolders,
-  persistFolders,
-} from './playbookStorage';
+  fetchFolders,
+  fetchPlays,
+  insertFolder,
+  updateFolderName,
+  deleteFolderRow,
+  unassignPlaysFromFolder,
+  insertPlay,
+  updatePlay,
+  deletePlayRow,
+} from './playbookApi';
 import { OFFENSIVE_FORMATIONS, DEFENSIVE_FORMATIONS, type FormationPosition } from '../utils/formations';
 
 export type Team = 'offense' | 'defense';
@@ -35,9 +40,9 @@ export interface Assignment {
   points: number[];
 }
 
-/** Organização hierárquica das jogadas salvas — preparação pra um futuro
- * sistema de usuários (cada conta poderá ter sua própria árvore de pastas).
- * Por enquanto é só um nível (sem sub-pastas) persistido no localStorage. */
+/** Organização hierárquica das jogadas salvas, por enquanto só um nível
+ * (sem sub-pastas). Persistida no Supabase (tabelas `folders`/`plays`,
+ * escopadas por `user_id` — ver playbookApi.ts) em vez de localStorage. */
 export interface Folder {
   id: string;
   name: string;
@@ -99,15 +104,43 @@ interface FieldState {
    * vez, sem tocar nos jogadores nem nas formações. */
   clearAllAssignments: () => void;
   savedPlays: Play[];
-  saveCurrentPlay: (name: string, category: Play['category'], folderId?: string) => void;
+  /** Cria uma jogada nova (INSERT) ou, se `existingPlayId` for passado,
+   * sobrescreve uma já existente (UPDATE) — hoje a UI só usa o caminho de
+   * criação; o parâmetro existe pra permitir "salvar por cima" no futuro
+   * sem precisar mexer na store de novo. */
+  saveCurrentPlay: (
+    name: string,
+    category: Play['category'],
+    folderId?: string,
+    existingPlayId?: string,
+  ) => Promise<void>;
   loadPlay: (id: string) => void;
-  deletePlay: (id: string) => void;
+  deletePlay: (id: string) => Promise<void>;
   folders: Folder[];
-  createFolder: (name: string) => void;
-  renameFolder: (id: string, newName: string) => void;
+  createFolder: (name: string) => Promise<void>;
+  renameFolder: (id: string, newName: string) => Promise<void>;
   /** Remove a pasta e realoca suas jogadas pra Raiz (folderId: undefined) —
    * excluir uma pasta nunca destrói as jogadas guardadas nela. */
-  deleteFolder: (id: string) => void;
+  deleteFolder: (id: string) => Promise<void>;
+  /** Id do usuário autenticado cujas pastas/jogadas estão carregadas — null
+   * antes do login ou depois do logout. Toda operação de pasta/jogada lê
+   * daqui em vez de receber o id por parâmetro em cada chamada. */
+  currentUserId: string | null;
+  /** True enquanto o SELECT inicial de pastas/jogadas está em andamento —
+   * evita mostrar "Nenhuma jogada salva ainda" por um instante antes dos
+   * dados reais chegarem do Supabase. */
+  isLoadingPlaybook: boolean;
+  /** Busca pastas/jogadas do usuário no Supabase e popula o estado local —
+   * chamado por App.tsx assim que a sessão é confirmada. */
+  loadUserPlaybook: (userId: string) => Promise<void>;
+  /** Limpa pastas/jogadas/currentUserId — chamado no logout, pra não deixar
+   * o playbook de um usuário visível depois que a sessão dele encerrou. */
+  clearUserPlaybook: () => void;
+  /** Mensagem da última operação de pasta/jogada que falhou contra o
+   * Supabase, ou null se não há erro pendente — ver PlaybookSidebar.tsx
+   * pro banner que exibe isso sem travar o resto da UI. */
+  syncError: string | null;
+  clearSyncError: () => void;
   /** Nome da jogada atualmente carregada/salva — null se o campo foi
    * resetado ou editado sem corresponder a nenhuma jogada salva. Usado
    * para nomear o arquivo na exportação PNG. */
@@ -164,7 +197,16 @@ function dedupeTrailingPairs(points: number[]): number[] {
   return result;
 }
 
-export const useFieldStore = create<FieldState>((set) => ({
+/** Extrai uma mensagem legível de um erro do Supabase (ou qualquer outro
+ * lançado), com um prefixo dizendo qual operação falhou — o banner de erro
+ * em PlaybookSidebar.tsx mostra isso direto, então precisa ser algo que
+ * faça sentido pro usuário final, não um stack trace. */
+function describeSyncError(operationLabel: string, err: unknown): string {
+  const detail = err instanceof Error ? err.message : String(err);
+  return `${operationLabel}: ${detail}`;
+}
+
+export const useFieldStore = create<FieldState>((set, get) => ({
   fieldRule: 'NCAA',
   setFieldRule: (rule) => set({ fieldRule: rule }),
   // A formação padrão já nasce populada aqui, então a primeira renderização
@@ -311,39 +353,36 @@ export const useFieldStore = create<FieldState>((set) => ({
       assignments: state.assignments.filter((a) => a.playerId !== playerId && a.id !== playerId),
     })),
   clearAllAssignments: () => set({ assignments: [], activeDrawingId: null }),
-  // Hidratação: lida do localStorage já na criação da store, então a
-  // primeira renderização do app já mostra as jogadas salvas anteriormente
-  // — mesmo padrão usado para a formação padrão de jogadores acima.
-  savedPlays: loadSavedPlays(),
-  saveCurrentPlay: (name, category, folderId) =>
-    set((state) => {
-      const newPlay: Play = {
-        id: `play-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        name,
-        category,
-        folderId,
-        // Captura o estado EXATO no momento do clique — não uma referência
-        // que continuaria mudando se o usuário seguisse editando o campo.
-        fieldRule: state.fieldRule,
-        players: state.players,
-        assignments: state.assignments,
-        createdAt: Date.now(),
-      };
-      const savedPlays = [...state.savedPlays, newPlay];
-      persistSavedPlays(savedPlays);
-      return { savedPlays, activePlayName: newPlay.name };
-    }),
+  // Populado por loadUserPlaybook() assim que a sessão é confirmada — antes
+  // disso (ou sem usuário logado) começa vazio, nunca lido de localStorage.
+  savedPlays: [],
+  saveCurrentPlay: async (name, category, folderId, existingPlayId) => {
+    const { currentUserId, fieldRule, players, assignments } = get();
+    if (!currentUserId) return; // não deveria disparar sem sessão (UI só aparece autenticada)
+    try {
+      const play = existingPlayId
+        ? await updatePlay(existingPlayId, { name, category, folderId, fieldRule, players, assignments })
+        : await insertPlay(currentUserId, { name, category, folderId, fieldRule, players, assignments });
+      set((state) => ({
+        savedPlays: existingPlayId
+          ? state.savedPlays.map((p) => (p.id === play.id ? play : p))
+          : [...state.savedPlays, play],
+        activePlayName: play.name,
+      }));
+    } catch (err) {
+      set({ syncError: describeSyncError('Não foi possível salvar a jogada', err) });
+    }
+  },
   loadPlay: (id) =>
     set((state) => {
       const play = state.savedPlays.find((p) => p.id === id);
       if (!play) return state;
-      // players/assignments são os mesmos arrays salvos juntos em
-      // saveCurrentPlay, então assignment.playerId já referencia os ids
-      // corretos dos jogadores carregados — a ancoragem das linhas do
-      // motor de desenho continua funcionando sem nenhum remapeamento.
-      // A pasta onde a jogada está guardada é irrelevante aqui: carregar
-      // sempre restaura fieldRule/players/assignments do mesmo jeito,
-      // dentro ou fora de uma pasta.
+      // players/assignments são os mesmos arrays já carregados do Supabase
+      // por loadUserPlaybook, então assignment.playerId já referencia os
+      // ids corretos dos jogadores — a ancoragem das linhas do motor de
+      // desenho continua funcionando sem nenhum remapeamento. Carregar uma
+      // jogada é 100% local (não bate no Supabase de novo): os dados já
+      // estão todos em savedPlays desde o carregamento inicial.
       return {
         fieldRule: play.fieldRule,
         players: play.players,
@@ -351,46 +390,71 @@ export const useFieldStore = create<FieldState>((set) => ({
         activePlayName: play.name,
       };
     }),
-  deletePlay: (id) =>
-    set((state) => {
-      const savedPlays = state.savedPlays.filter((p) => p.id !== id);
-      persistSavedPlays(savedPlays);
-      return { savedPlays };
-    }),
+  deletePlay: async (id) => {
+    try {
+      await deletePlayRow(id);
+      set((state) => ({ savedPlays: state.savedPlays.filter((p) => p.id !== id) }));
+    } catch (err) {
+      set({ syncError: describeSyncError('Não foi possível excluir a jogada', err) });
+    }
+  },
   activePlayName: null,
-  // Mesmo padrão de hidratação de savedPlays acima: lida do localStorage já
-  // na criação da store.
-  folders: loadSavedFolders(),
-  createFolder: (name) =>
-    set((state) => {
-      const newFolder: Folder = {
-        id: `folder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        name,
-      };
-      const folders = [...state.folders, newFolder];
-      persistFolders(folders);
-      return { folders };
-    }),
-  renameFolder: (id, newName) =>
-    set((state) => {
-      const folders = state.folders.map((folder) =>
-        folder.id === id ? { ...folder, name: newName } : folder,
-      );
-      persistFolders(folders);
-      return { folders };
-    }),
-  deleteFolder: (id) =>
-    set((state) => {
-      const folders = state.folders.filter((folder) => folder.id !== id);
-      persistFolders(folders);
-      // Realoca pra Raiz em vez de apagar junto — excluir uma pasta é uma
-      // ação de organização, não deveria também destruir jogadas guardadas.
-      const savedPlays = state.savedPlays.map((play) =>
-        play.folderId === id ? { ...play, folderId: undefined } : play,
-      );
-      persistSavedPlays(savedPlays);
-      return { folders, savedPlays };
-    }),
+  folders: [],
+  createFolder: async (name) => {
+    const { currentUserId } = get();
+    if (!currentUserId) return;
+    try {
+      const newFolder = await insertFolder(currentUserId, name);
+      set((state) => ({ folders: [...state.folders, newFolder] }));
+    } catch (err) {
+      set({ syncError: describeSyncError('Não foi possível criar a pasta', err) });
+    }
+  },
+  renameFolder: async (id, newName) => {
+    try {
+      await updateFolderName(id, newName);
+      set((state) => ({
+        folders: state.folders.map((folder) => (folder.id === id ? { ...folder, name: newName } : folder)),
+      }));
+    } catch (err) {
+      set({ syncError: describeSyncError('Não foi possível renomear a pasta', err) });
+    }
+  },
+  deleteFolder: async (id) => {
+    try {
+      // Realoca pra Raiz ANTES de apagar a pasta em si — excluir uma pasta é
+      // uma ação de organização, não deveria também destruir as jogadas
+      // guardadas nela nem deixar folder_id apontando pra uma pasta morta.
+      await unassignPlaysFromFolder(id);
+      await deleteFolderRow(id);
+      set((state) => ({
+        folders: state.folders.filter((folder) => folder.id !== id),
+        savedPlays: state.savedPlays.map((play) =>
+          play.folderId === id ? { ...play, folderId: undefined } : play,
+        ),
+      }));
+    } catch (err) {
+      set({ syncError: describeSyncError('Não foi possível excluir a pasta', err) });
+    }
+  },
+  currentUserId: null,
+  isLoadingPlaybook: false,
+  loadUserPlaybook: async (userId) => {
+    set({ currentUserId: userId, isLoadingPlaybook: true, syncError: null });
+    try {
+      const [folders, savedPlays] = await Promise.all([fetchFolders(userId), fetchPlays(userId)]);
+      set({ folders, savedPlays, isLoadingPlaybook: false });
+    } catch (err) {
+      set({
+        syncError: describeSyncError('Não foi possível carregar o playbook', err),
+        isLoadingPlaybook: false,
+      });
+    }
+  },
+  clearUserPlaybook: () =>
+    set({ currentUserId: null, folders: [], savedPlays: [], activePlayName: null, syncError: null }),
+  syncError: null,
+  clearSyncError: () => set({ syncError: null }),
   isExporting: false,
   setIsExporting: (value) => set({ isExporting: value }),
 }));

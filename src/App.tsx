@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
+import { useFieldStore } from './store/useFieldStore';
 import { Field } from './features/field/Field';
 import { FieldControls } from './features/field/FieldControls';
 import { HelpGuide } from './features/field/HelpGuide';
@@ -13,6 +14,9 @@ function App() {
   // distinção, a tela de Login "pisca" por baixo do app real (ou vice-versa)
   // no primeiro render, antes de getSession() responder.
   const [isCheckingSession, setIsCheckingSession] = useState(true);
+
+  const loadUserPlaybook = useFieldStore((state) => state.loadUserPlaybook);
+  const clearUserPlaybook = useFieldStore((state) => state.clearUserPlaybook);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -30,6 +34,20 @@ function App() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Chaveado no ID do usuário (não no objeto `session` inteiro) — um
+  // refresh de token silencioso troca a referência de `session` sem trocar
+  // de usuário, e recarregar o playbook inteiro nesse caso seria
+  // desperdício. Só busca de novo quando o usuário realmente muda (login
+  // com outra conta) e limpa quando a sessão encerra (logout/expiração),
+  // pra nunca deixar o playbook de um usuário visível pro próximo.
+  useEffect(() => {
+    if (session?.user.id) {
+      loadUserPlaybook(session.user.id);
+    } else {
+      clearUserPlaybook();
+    }
+  }, [session?.user.id, loadUserPlaybook, clearUserPlaybook]);
 
   if (isCheckingSession) {
     return (
