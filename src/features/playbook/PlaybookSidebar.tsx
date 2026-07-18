@@ -14,6 +14,13 @@ const CATEGORY_LABELS: Record<Play['category'], string> = {
 const INTERACTIVE_BUTTON_CLASSES =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lobos-gold-400 active:scale-[0.97] transition-all';
 
+interface PlaybookSidebarProps {
+  /** Modo Foco (App.tsx): false retrai a barra pra w-0 em telas md+, sem
+   * desmontar nada — o formulário/lista continuam com seu estado intacto,
+   * só ficam invisíveis até reabrir. Não afeta o layout empilhado mobile. */
+  isOpen: boolean;
+}
+
 /**
  * Painel lateral de persistência: salva o estado atual do campo como uma
  * `Play` (nome + categoria + pasta) e lista as jogadas já salvas, agrupadas
@@ -21,7 +28,7 @@ const INTERACTIVE_BUTTON_CLASSES =
  * pastas e ações de carregar/excluir jogada. Não desenha nada no Konva — só
  * lê/escreve `savedPlays`/`folders` via Zustand.
  */
-export function PlaybookSidebar() {
+export function PlaybookSidebar({ isOpen }: PlaybookSidebarProps) {
   const savedPlays = useFieldStore((state) => state.savedPlays);
   const saveCurrentPlay = useFieldStore((state) => state.saveCurrentPlay);
   const loadPlay = useFieldStore((state) => state.loadPlay);
@@ -96,7 +103,11 @@ export function PlaybookSidebar() {
   }));
 
   return (
-    <aside className="flex h-auto max-h-[45vh] w-full shrink-0 flex-col border-b border-white/5 bg-lobos-navy-900 text-slate-100 md:h-screen md:max-h-none md:w-80 md:border-r md:border-b-0">
+    <aside
+      className={`flex h-auto max-h-[45vh] w-full shrink-0 flex-col border-b border-white/5 bg-lobos-navy-900 text-slate-100 transition-all duration-300 md:h-screen md:max-h-none md:border-b-0 ${
+        isOpen ? 'md:w-80 md:border-r' : 'md:w-0 md:overflow-hidden md:border-r-0'
+      }`}
+    >
       <div className="flex flex-col gap-3 border-b border-white/5 p-4">
         <h2 className="text-lg font-bold">Playbook</h2>
 

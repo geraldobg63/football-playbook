@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type Konva from 'konva';
 import { Stage, Layer } from 'react-konva';
 import { PIXELS_PER_YARD } from '../../utils/constants';
@@ -58,15 +58,76 @@ export function Field({ pixelsPerYard = PIXELS_PER_YARD }: FieldProps) {
 
   const yd = (yards: number) => yards * pixelsPerYard;
 
-  // Eixo X = comprimento do campo (120 jd) · Eixo Y = largura (53 1/3 jd).
-  const fieldWidthPx = yd(FIELD_LENGTH_YARDS);
-  const fieldHeightPx = yd(FIELD_WIDTH_YARDS);
+  // Tamanho NATIVO do campo (toda a matemática de jarda->pixel em
+  // FieldGeometry/PlayerNode/AssignmentsLayer/exportToPng continua baseada
+  // nele, sem nenhuma mudança) — o Modo Foco não altera essa escala de
+  // verdade, só aplica um zoom uniforme por cima via Stage.scale abaixo.
+  const nativeFieldWidthPx = yd(FIELD_LENGTH_YARDS);
+  const nativeFieldHeightPx = yd(FIELD_WIDTH_YARDS);
 
-  // Pixels do ponteiro do mouse -> jardas reais, restringidas aos limites
-  // do campo inteiro (0-120 x, 0-53.33 y), usando sempre PIXELS_PER_YARD.
+  // Mede o espaço realmente disponível pro campo (o wrapper em App.tsx, que
+  // cresce/encolhe quando as barras laterais retraem/expandem) e recalcula
+  // sempre que ele mudar de tamanho — inclusive durante a transição CSS de
+  // largura das barras, já que ResizeObserver dispara a cada frame de
+  // layout, não só uma vez no fim.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerSize, setContainerSize] = useState<{ width: number; height: number } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    // Leitura síncrona imediata, antes do observer entrar em cena — o
+    // primeiro callback de um ResizeObserver só chega de forma assíncrona
+    // (depois do próximo layout/paint), então sem isso o primeiro frame
+    // sempre usaria o fallback nativo abaixo mesmo quando o contêiner real
+    // já tem um tamanho diferente, causando um "pulo" visual perceptível
+    // logo após montar.
+    const rect = el.getBoundingClientRect();
+    setContainerSize({ width: rect.width, height: rect.height });
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      setContainerSize({ width, height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // Antes do primeiro tamanho ser medido (nem a leitura síncrona nem o
+  // observer rodaram ainda), cai pro tamanho nativo — evita um Stage 0x0.
+  const availableWidthPx = containerSize?.width ?? nativeFieldWidthPx;
+  const availableHeightPx = containerSize?.height ?? nativeFieldHeightPx;
+
+  // "contain": encolhe ou amplia o campo INTEIRO mantendo a proporção
+  // original — a mesma escala vale pros eixos X e Y, então o gramado e os
+  // jogadores nunca esticam/achatam, só ficam menores ou maiores juntos.
+  // IMPORTANTE: stage.getPointerPosition() devolve coordenadas no espaço de
+  // TELA (pixels do canvas, já escalados) — Konva NÃO desconta a escala do
+  // próprio Stage sozinho nesse método (confirmado testando manualmente;
+  // só getRelativePointerPosition()/dragBoundFunc de nós fazem isso). Por
+  // isso pointerToYards() abaixo divide também por `stageScale`, senão todo
+  // clique mapeia pra jarda errada sempre que o campo não estiver 1:1.
+  const stageScale = Math.min(
+    availableWidthPx / nativeFieldWidthPx,
+    availableHeightPx / nativeFieldHeightPx,
+  );
+  const stageWidthPx = nativeFieldWidthPx * stageScale;
+  const stageHeightPx = nativeFieldHeightPx * stageScale;
+
+  // Pixels de TELA do ponteiro (getPointerPosition(), já em escala de
+  // exibição) -> jardas reais, restringidas aos limites do campo inteiro
+  // (0-120 x, 0-53.33 y). Descontar `stageScale` primeiro é essencial: sem
+  // isso, um campo encolhido pelo Modo Foco faria todo clique mirar num
+  // ponto errado do campo (mais perto do centro do que o cursor realmente
+  // está), já que pixelsPerYard sozinho só vale na escala 1:1.
   const pointerToYards = (pointerPx: { x: number; y: number }) => ({
-    x: clamp(pointerPx.x / pixelsPerYard, 0, FIELD_LENGTH_YARDS),
-    y: clamp(pointerPx.y / pixelsPerYard, 0, FIELD_WIDTH_YARDS),
+    x: clamp(pointerPx.x / (pixelsPerYard * stageScale), 0, FIELD_LENGTH_YARDS),
+    y: clamp(pointerPx.y / (pixelsPerYard * stageScale), 0, FIELD_WIDTH_YARDS),
   });
 
   const handleStageClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -208,32 +269,36 @@ export function Field({ pixelsPerYard = PIXELS_PER_YARD }: FieldProps) {
   };
 
   return (
-    <Stage
-      ref={stageRef}
-      width={fieldWidthPx}
-      height={fieldHeightPx}
-      onClick={handleStageClick}
-      onMouseDown={handleStageMouseDown}
-      onMouseUp={handleStageMouseUp}
-      onMouseMove={handleStageMouseMove}
-      onDblClick={handleStageDblClick}
-    >
-      <FieldGeometry pixelsPerYard={pixelsPerYard} fieldRule={fieldRule} />
-      {/* Camada interativa: separada do fundo estático (listening={false}
-          dentro de FieldGeometry) para que só os jogadores capturem eventos
-          de arraste. Só é "draggable" no modo 'move' — nos modos de desenho
-          o clique inicia uma polilinha (ver handleStageClick acima). */}
-      <Layer>
-        {players.map((player) => (
-          <PlayerNode key={player.id} player={player} draggable={drawingMode === 'move'} />
-        ))}
-      </Layer>
-      <AssignmentsLayer
-        assignments={assignments}
-        players={players}
-        activeDrawingId={activeDrawingId}
-        isEraseMode={drawingMode === 'erase'}
-      />
-    </Stage>
+    <div ref={containerRef} className="h-full w-full">
+      <Stage
+        ref={stageRef}
+        width={stageWidthPx}
+        height={stageHeightPx}
+        scaleX={stageScale}
+        scaleY={stageScale}
+        onClick={handleStageClick}
+        onMouseDown={handleStageMouseDown}
+        onMouseUp={handleStageMouseUp}
+        onMouseMove={handleStageMouseMove}
+        onDblClick={handleStageDblClick}
+      >
+        <FieldGeometry pixelsPerYard={pixelsPerYard} fieldRule={fieldRule} />
+        {/* Camada interativa: separada do fundo estático (listening={false}
+            dentro de FieldGeometry) para que só os jogadores capturem eventos
+            de arraste. Só é "draggable" no modo 'move' — nos modos de desenho
+            o clique inicia uma polilinha (ver handleStageClick acima). */}
+        <Layer>
+          {players.map((player) => (
+            <PlayerNode key={player.id} player={player} draggable={drawingMode === 'move'} />
+          ))}
+        </Layer>
+        <AssignmentsLayer
+          assignments={assignments}
+          players={players}
+          activeDrawingId={activeDrawingId}
+          isEraseMode={drawingMode === 'erase'}
+        />
+      </Stage>
+    </div>
   );
 }

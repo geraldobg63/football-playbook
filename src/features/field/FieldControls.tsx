@@ -52,6 +52,15 @@ const DEFENSIVE_FORMATION_NAMES = Object.keys(DEFENSIVE_FORMATIONS);
 const INTERACTIVE_BUTTON_CLASSES =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lobos-gold-400 active:scale-[0.97] transition-all';
 
+interface FieldControlsProps {
+  /** Modo Foco (App.tsx): false retrai a barra pra w-0 em telas md+. Junto
+   * com a largura, `overflow-x-visible` (necessário pro tooltip escapar os
+   * limites da barra — ver comentário no botão abaixo) também vira
+   * condicional: com a barra fechada não há tooltip visível pra escapar
+   * mesmo, então cai pra overflow-hidden igual às outras zonas colapsadas. */
+  isOpen: boolean;
+}
+
 /**
  * Barra lateral (direita em telas médias+, empilhada abaixo do campo em
  * telas pequenas): regra de campo ativa, formação de ataque/defesa
@@ -59,7 +68,7 @@ const INTERACTIVE_BUTTON_CLASSES =
  * controlado pelo Zustand — o único estado local é qual formação está
  * selecionada em cada dropdown, só para exibição.
  */
-export function FieldControls() {
+export function FieldControls({ isOpen }: FieldControlsProps) {
   const fieldRule = useFieldStore((state) => state.fieldRule);
   const setFieldRule = useFieldStore((state) => state.setFieldRule);
   const drawingMode = useFieldStore((state) => state.drawingMode);
@@ -83,7 +92,13 @@ export function FieldControls() {
   };
 
   return (
-    <div className="flex w-full shrink-0 flex-col items-start gap-3 overflow-x-visible overflow-y-auto border-t border-white/5 bg-lobos-navy-900 p-3 shadow-lg md:h-screen md:w-72 md:border-t-0 md:border-l">
+    <div
+      className={`flex w-full shrink-0 flex-col items-start gap-3 overflow-y-auto border-t border-white/5 bg-lobos-navy-900 p-3 shadow-lg transition-all duration-300 md:h-screen md:border-t-0 ${
+        isOpen
+          ? 'overflow-x-visible md:w-72 md:border-l'
+          : 'overflow-x-hidden md:w-0 md:overflow-hidden md:border-l-0 md:p-0'
+      }`}
+    >
       {/* Seletor de liga por logo — vive fora do padrão ToolbarSection de
           propósito: os logos já são autoexplicativos (liga reconhecível
           visualmente), então o card não carrega um micro-label. */}

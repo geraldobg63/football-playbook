@@ -15,6 +15,13 @@ function App() {
   // no primeiro render, antes de getSession() responder.
   const [isCheckingSession, setIsCheckingSession] = useState(true);
 
+  // Modo Foco: retrai a barra do Playbook (esquerda) e/ou de Ferramentas
+  // (direita) pra maximizar o campo. Só afeta o layout de 3 colunas em
+  // telas md+ — nas classes condicionais de PlaybookSidebar/FieldControls
+  // abaixo, o colapso vive inteiramente atrás do prefixo `md:`.
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
+
   const loadUserPlaybook = useFieldStore((state) => state.loadUserPlaybook);
   const clearUserPlaybook = useFieldStore((state) => state.clearUserPlaybook);
 
@@ -70,18 +77,88 @@ function App() {
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-y-hidden">
-        <PlaybookSidebar />
+        <PlaybookSidebar isOpen={isLeftSidebarOpen} />
         {/* Tratamento de "palco": moldura visual ao redor do Konva (ring,
             radius, sombra) sem tocar em nada da lógica de renderização —
             overflow-x-auto/overflow-y-auto/min-w-0/justify-start seguem
-            exatamente como antes, só ganharam classes puramente visuais. */}
+            exatamente como antes, só ganharam classes puramente visuais.
+            `relative` é o que ancora as duas abas flutuantes abaixo. */}
         <div className="relative flex min-w-0 max-w-full flex-1 justify-start overflow-x-auto overflow-y-auto rounded-xl bg-lobos-navy-900/40 p-4 ring-1 ring-white/5 shadow-2xl">
+          <SidebarToggleTab
+            side="left"
+            isOpen={isLeftSidebarOpen}
+            onClick={() => setIsLeftSidebarOpen((open) => !open)}
+          />
           <Field />
+          <SidebarToggleTab
+            side="right"
+            isOpen={isRightSidebarOpen}
+            onClick={() => setIsRightSidebarOpen((open) => !open)}
+          />
         </div>
-        <FieldControls />
+        <FieldControls isOpen={isRightSidebarOpen} />
         <HelpGuide />
       </div>
     </div>
+  );
+}
+
+/**
+ * Aba flutuante semitransparente (Modo Foco): retrai/expande a barra
+ * lateral correspondente. Grudada na borda INTERNA do contêiner do campo
+ * (`left-0`/`right-0` dentro do wrapper `relative` acima) — nunca dentro
+ * do <Stage> do Konva, então não aparece na exportação PNG (que só captura
+ * o próprio canvas, ver exportToPng.ts).
+ */
+function SidebarToggleTab({
+  side,
+  isOpen,
+  onClick,
+}: {
+  side: 'left' | 'right';
+  isOpen: boolean;
+  onClick: () => void;
+}) {
+  // A seta aponta pra direção em que o painel vai se mover ao clicar —
+  // convenção comum em painéis retráteis (ex.: barra lateral do VS Code):
+  // aberta, aponta pro lado de fora (vai recolher pra lá); fechada, aponta
+  // de volta pro centro (vai expandir de volta).
+  const oppositeSide = side === 'left' ? 'right' : 'left';
+  const chevronDirection = isOpen ? side : oppositeSide;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={
+        isOpen
+          ? `Recolher barra ${side === 'left' ? 'esquerda' : 'direita'}`
+          : `Expandir barra ${side === 'left' ? 'esquerda' : 'direita'}`
+      }
+      className={`absolute top-1/2 z-10 hidden -translate-y-1/2 items-center justify-center bg-black/50 px-1 py-6 text-white transition-all hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lobos-gold-400 active:scale-[0.97] md:flex ${
+        side === 'left' ? 'left-0 rounded-r-md' : 'right-0 rounded-l-md'
+      }`}
+    >
+      <ChevronIcon direction={chevronDirection} />
+    </button>
+  );
+}
+
+function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {direction === 'left' ? <path d="M15 18l-6-6 6-6" /> : <path d="M9 18l6-6-6-6" />}
+    </svg>
   );
 }
 

@@ -1,10 +1,20 @@
 import { useFieldStore } from '../../store/useFieldStore';
+import { PIXELS_PER_YARD } from '../../utils/constants';
+import { FIELD_LENGTH_YARDS, FIELD_WIDTH_YARDS } from './constants';
 import { stageRef } from './stageRef';
 
 // pixelRatio 3x sobre um canvas 10px/jarda dá ~300 DPI num campo impresso
 // em tamanho de pôster — o canvas em tela é 1:1, então exportar sem
 // escalar geraria serrilhado visível na impressão.
 const EXPORT_PIXEL_RATIO = 3;
+
+// Tamanho NATIVO do campo (mesmo cálculo de Field.tsx) — usado só pra
+// forçar o Stage de volta pra essa resolução na hora de exportar, já que
+// o Modo Foco pode ter encolhido/ampliado o Stage em tela (ver
+// stageScale em Field.tsx). Sem isso, o PNG sairia na resolução do zoom
+// atual em vez de sempre em qualidade de impressão.
+const NATIVE_FIELD_WIDTH_PX = FIELD_LENGTH_YARDS * PIXELS_PER_YARD;
+const NATIVE_FIELD_HEIGHT_PX = FIELD_WIDTH_YARDS * PIXELS_PER_YARD;
 
 // Tempo para o React/Konva repintarem sem os handles de edição antes da
 // captura (ver `isExporting` em useFieldStore) — um `setTimeout` garante
@@ -42,13 +52,24 @@ function triggerDownload(dataUrl: string, fileName: string) {
 
 /**
  * Exporta o campo atual (Stage do Konva) como PNG de alta resolução,
- * pronto para impressão. Duas armadilhas contornadas aqui:
+ * pronto para impressão. Três armadilhas contornadas aqui:
  *
  * 1) O canvas em tela é 1:1 — exportar sem escalar gera serrilhado ao
  *    imprimir. `pixelRatio: 3` resolve em ~300 DPI.
  * 2) Os handles de edição das curvas precisam sumir ANTES da captura, ou
  *    aparecem no PNG final. Por isso ligamos `isExporting`, esperamos o
  *    React/Konva repintarem sem eles, só então chamamos `toDataURL`.
+ * 3) Com o Modo Foco, o Stage pode estar exibido menor (ou maior) que o
+ *    tamanho nativo do campo (ver stageScale em Field.tsx) — toDataURL()
+ *    usa o width/height ATUAL do Stage como base do pixelRatio, então
+ *    exportar sem corrigir isso geraria um PNG na resolução do zoom da
+ *    tela, não em qualidade de impressão. Por isso o Stage é forçado de
+ *    volta pro tamanho/escala nativos só durante a captura, e restaurado
+ *    logo em seguida — o próximo render do React (via as props
+ *    width/height/scaleX/scaleY de Field.tsx) reconcilia de volta pro
+ *    tamanho responsivo atual de qualquer jeito, então a restauração
+ *    manual aqui é só pra não deixar o campo "pulando" visualmente entre
+ *    o clique em Exportar e o próximo re-render.
  */
 export async function exportFieldToPng(): Promise<void> {
   const stage = stageRef.current;
@@ -59,10 +80,23 @@ export async function exportFieldToPng(): Promise<void> {
   setIsExporting(true);
   await new Promise((resolve) => setTimeout(resolve, HIDE_EDIT_UI_DELAY_MS));
 
+  const previousWidth = stage.width();
+  const previousHeight = stage.height();
+  const previousScale = stage.scale() ?? { x: 1, y: 1 };
+
+  stage.width(NATIVE_FIELD_WIDTH_PX);
+  stage.height(NATIVE_FIELD_HEIGHT_PX);
+  stage.scale({ x: 1, y: 1 });
+  stage.batchDraw();
+
   try {
     const dataUrl = stage.toDataURL({ pixelRatio: EXPORT_PIXEL_RATIO, mimeType: 'image/png' });
     triggerDownload(dataUrl, buildFileName());
   } finally {
+    stage.width(previousWidth);
+    stage.height(previousHeight);
+    stage.scale(previousScale);
+    stage.batchDraw();
     setIsExporting(false);
   }
 }
