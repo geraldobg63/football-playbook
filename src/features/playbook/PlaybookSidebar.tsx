@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import type Konva from 'konva';
-import { useFieldStore, type Folder, type Play } from '../../store/useFieldStore';
+import { useFieldStore, type Folder, type GameMode, type Play } from '../../store/useFieldStore';
 import { supabase } from '../../supabase';
 import { BatchExportStage } from './BatchExportStage';
 import { exportPlaysToPdf } from './exportPlaysToPdf';
@@ -9,6 +9,14 @@ const CATEGORY_LABELS: Record<Play['category'], string> = {
   offense: 'Ataque',
   defense: 'Defesa',
   special: 'Times Especiais',
+};
+
+// Mesmo rótulo usado no toggle do header (App.tsx) — duplicado aqui de
+// propósito (mesmo padrão de CATEGORY_LABELS acima): só exibe qual
+// modalidade está ativa, ainda não muda nenhum comportamento.
+const GAME_MODE_LABELS: Record<GameMode, string> = {
+  tackle: 'Tackle 11x11',
+  flag5x5: 'Flag 5x5',
 };
 
 // Mesmo tratamento de foco/clique aplicado em todo botão do app (ver
@@ -32,6 +40,7 @@ interface PlaybookSidebarProps {
  * lê/escreve `savedPlays`/`folders` via Zustand.
  */
 export function PlaybookSidebar({ isOpen }: PlaybookSidebarProps) {
+  const gameMode = useFieldStore((state) => state.gameMode);
   const savedPlays = useFieldStore((state) => state.savedPlays);
   const saveCurrentPlay = useFieldStore((state) => state.saveCurrentPlay);
   const loadPlay = useFieldStore((state) => state.loadPlay);
@@ -154,7 +163,12 @@ export function PlaybookSidebar({ isOpen }: PlaybookSidebarProps) {
       }`}
     >
       <div className="flex flex-col gap-3 border-b border-white/5 p-4">
-        <h2 className="text-lg font-bold">Playbook</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-lg font-bold">Playbook</h2>
+          <span className="rounded-full bg-lobos-navy-800 px-2.5 py-0.5 text-xs font-semibold text-lobos-gold-400 ring-1 ring-white/10">
+            {GAME_MODE_LABELS[gameMode]}
+          </span>
+        </div>
 
         <label className="flex flex-col gap-1 text-sm text-slate-300">
           Nome da Jogada

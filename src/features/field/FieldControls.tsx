@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useFieldStore, type DrawingMode } from '../../store/useFieldStore';
+import { useFieldStore, type DrawingMode, type GameMode } from '../../store/useFieldStore';
 import type { FieldRule } from '../../utils/constants';
 import { OFFENSIVE_FORMATIONS, DEFENSIVE_FORMATIONS } from '../../utils/formations';
 import { exportFieldToPng } from './exportToPng';
@@ -43,6 +43,14 @@ const DRAWING_MODE_TOOLTIPS: Partial<Record<DrawingMode, string>> = {
   erase: 'Apagar Vetor (Clique na linha)',
 };
 
+// Mesmo rótulo do toggle no header (App.tsx) — duplicado de propósito, mesmo
+// padrão de FIELD_RULE_LABELS acima. Só exibe a modalidade ativa por
+// enquanto, sem mudar nenhum comportamento das ferramentas ainda.
+const GAME_MODE_LABELS: Record<GameMode, string> = {
+  tackle: 'Tackle 11x11',
+  flag5x5: 'Flag 5x5',
+};
+
 const OFFENSIVE_FORMATION_NAMES = Object.keys(OFFENSIVE_FORMATIONS);
 const DEFENSIVE_FORMATION_NAMES = Object.keys(DEFENSIVE_FORMATIONS);
 
@@ -69,6 +77,7 @@ interface FieldControlsProps {
  * selecionada em cada dropdown, só para exibição.
  */
 export function FieldControls({ isOpen }: FieldControlsProps) {
+  const gameMode = useFieldStore((state) => state.gameMode);
   const fieldRule = useFieldStore((state) => state.fieldRule);
   const setFieldRule = useFieldStore((state) => state.setFieldRule);
   const drawingMode = useFieldStore((state) => state.drawingMode);
@@ -99,6 +108,16 @@ export function FieldControls({ isOpen }: FieldControlsProps) {
           : 'overflow-x-hidden md:w-0 md:overflow-hidden md:border-l-0 md:p-0'
       }`}
     >
+      {/* Badge de modalidade ativa — só informativo nesta etapa (ver
+          GameMode em useFieldStore.ts). `justify-end` porque esta barra não
+          tem um título/h2 próprio pra alinhar ao lado (ao contrário da
+          PlaybookSidebar), então o badge fica sozinho no topo. */}
+      <div className="flex w-full justify-end">
+        <span className="rounded-full bg-lobos-navy-800 px-2.5 py-0.5 text-xs font-semibold text-lobos-gold-400 ring-1 ring-white/10">
+          {GAME_MODE_LABELS[gameMode]}
+        </span>
+      </div>
+
       {/* Seletor de liga por logo — vive fora do padrão ToolbarSection de
           propósito: os logos já são autoexplicativos (liga reconhecível
           visualmente), então o card não carrega um micro-label. */}

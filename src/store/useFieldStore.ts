@@ -14,6 +14,12 @@ import {
 } from './playbookApi';
 import { OFFENSIVE_FORMATIONS, DEFENSIVE_FORMATIONS, type FormationPosition } from '../utils/formations';
 
+/** Modalidade esportiva — preparação estrutural pra suportar "Tackle 11x11"
+ * (padrão atual) e "Flag 5x5" no futuro. Nesta iteração é só estado + UI de
+ * alternância: NADA na renderização do Konva (proporções do campo, limite
+ * de jogadores, vetores) reage a essa variável ainda, de propósito. */
+export type GameMode = 'tackle' | 'flag5x5';
+
 export type Team = 'offense' | 'defense';
 
 export interface Player {
@@ -63,6 +69,9 @@ export interface Play {
 }
 
 interface FieldState {
+  /** Ver comentário do tipo GameMode acima — só estado por enquanto. */
+  gameMode: GameMode;
+  setGameMode: (mode: GameMode) => void;
   fieldRule: FieldRule;
   setFieldRule: (rule: FieldRule) => void;
   players: Player[];
@@ -207,6 +216,8 @@ function describeSyncError(operationLabel: string, err: unknown): string {
 }
 
 export const useFieldStore = create<FieldState>((set, get) => ({
+  gameMode: 'tackle',
+  setGameMode: (mode) => set({ gameMode: mode }),
   fieldRule: 'NCAA',
   setFieldRule: (rule) => set({ fieldRule: rule }),
   // A formação padrão já nasce populada aqui, então a primeira renderização

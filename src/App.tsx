@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
-import { useFieldStore } from './store/useFieldStore';
+import { useFieldStore, type GameMode } from './store/useFieldStore';
 import { Field } from './features/field/Field';
 import { FieldControls } from './features/field/FieldControls';
 import { HelpGuide } from './features/field/HelpGuide';
@@ -24,6 +24,8 @@ function App() {
 
   const loadUserPlaybook = useFieldStore((state) => state.loadUserPlaybook);
   const clearUserPlaybook = useFieldStore((state) => state.clearUserPlaybook);
+  const gameMode = useFieldStore((state) => state.gameMode);
+  const setGameMode = useFieldStore((state) => state.setGameMode);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -70,10 +72,11 @@ function App() {
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-lobos-navy-950">
-      <header className="flex h-14 shrink-0 items-center border-b border-white/5 bg-lobos-navy-950 px-4">
+      <header className="flex h-14 shrink-0 items-center justify-between border-b border-white/5 bg-lobos-navy-950 px-4">
         <h1 className="text-xl font-bold tracking-tight text-slate-200">
           🏈 Uberlândia Lobos Playbook
         </h1>
+        <GameModeToggle mode={gameMode} onChange={setGameMode} />
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-y-hidden">
@@ -84,6 +87,17 @@ function App() {
             exatamente como antes, só ganharam classes puramente visuais.
             `relative` é o que ancora as duas abas flutuantes abaixo. */}
         <div className="relative flex min-w-0 max-w-full flex-1 justify-start overflow-x-auto overflow-y-auto rounded-xl bg-lobos-navy-900/40 p-4 ring-1 ring-white/5 shadow-2xl">
+          {/* Badge só informativo, propagando gameMode até a área do canvas
+              sem tocar em nenhuma linha do componente Field/Konva (regra de
+              segurança desta etapa) — vive aqui, em App.tsx, por fora do
+              <Stage>. pointer-events-none por precaução: já tivemos uma
+              regressão nesta sessão de um elemento flutuante sobre o campo
+              roubando cliques de desenho — não deveria acontecer aqui (não
+              tem largura/altura relevante cobrindo jogadores), mas mantém a
+              mesma disciplina defensiva. */}
+          <span className="pointer-events-none absolute top-2 left-1/2 z-10 -translate-x-1/2 rounded-full bg-lobos-navy-950/80 px-3 py-1 text-xs font-semibold text-lobos-gold-400 ring-1 ring-white/10">
+            {GAME_MODE_LABELS[gameMode]}
+          </span>
           <SidebarToggleTab
             side="left"
             isOpen={isLeftSidebarOpen}
@@ -99,6 +113,50 @@ function App() {
         <FieldControls isOpen={isRightSidebarOpen} />
         <HelpGuide />
       </div>
+    </div>
+  );
+}
+
+const GAME_MODE_LABELS: Record<GameMode, string> = {
+  tackle: 'Tackle 11x11',
+  flag5x5: 'Flag 5x5',
+};
+
+/**
+ * Botão de segmento (Tackle/Flag) no header — preparação estrutural pra
+ * multi-modalidade (ver GameMode em useFieldStore.ts). Mesmo padrão visual
+ * dos outros toggles de "estado ativo" do app (pill dourada), mas puramente
+ * de estado nesta etapa: nada na renderização do campo reage a isso ainda.
+ */
+function GameModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: GameMode;
+  onChange: (mode: GameMode) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Modalidade"
+      className="flex items-center gap-1 rounded-full bg-lobos-navy-900 p-1 ring-1 ring-white/10"
+    >
+      {(Object.keys(GAME_MODE_LABELS) as GameMode[]).map((option) => (
+        <button
+          key={option}
+          type="button"
+          role="radio"
+          aria-checked={mode === option}
+          onClick={() => onChange(option)}
+          className={`rounded-full px-3 py-1 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lobos-gold-400 active:scale-[0.97] ${
+            mode === option
+              ? 'bg-lobos-gold-500 text-lobos-navy-950'
+              : 'text-slate-300 hover:text-white'
+          }`}
+        >
+          {GAME_MODE_LABELS[option]}
+        </button>
+      ))}
     </div>
   );
 }
