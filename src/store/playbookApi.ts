@@ -1,5 +1,5 @@
 import { supabase } from '../supabase';
-import type { Folder, Play } from './useFieldStore';
+import type { Folder, GameMode, Play } from './useFieldStore';
 
 /**
  * Ponte entre o schema do Supabase (snake_case, JSONB) e os tipos do app
@@ -29,6 +29,11 @@ interface PlayRow {
   folder_id: string | null;
   name: string;
   category: string;
+  /** Coluna própria na tabela `plays` (confirmada via introspecção REST —
+   * `folders` não tem essa coluna). Jogadas salvas antes desta feature vêm
+   * com `null` aqui: tratadas como 'tackle' em playFromRow pra não sumirem
+   * da visão do treinador (Tackle 11x11 é o único modo que sempre existiu). */
+  modalidade: string | null;
   data: PlayData;
   created_at: string;
 }
@@ -43,6 +48,7 @@ function playFromRow(row: PlayRow): Play {
     name: row.name,
     category: row.category as Play['category'],
     folderId: row.folder_id ?? undefined,
+    gameMode: (row.modalidade as GameMode | null) ?? 'tackle',
     fieldRule: row.data.fieldRule,
     players: row.data.players,
     assignments: row.data.assignments,
@@ -60,12 +66,24 @@ export async function fetchFolders(userId: string): Promise<Folder[]> {
   return (data as FolderRow[]).map(folderFromRow);
 }
 
-export async function fetchPlays(userId: string): Promise<Play[]> {
-  const { data, error } = await supabase
-    .from('plays')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: true });
+/**
+ * Filtra por modalidade ativa — o treinador só vê jogadas compatíveis com o
+ * modo selecionado no toggle do header. Em 'tackle' também aceita
+ * `modalidade IS NULL`: jogadas salvas antes desta coluna existir não têm
+ * valor nenhum ali, e como Tackle 11x11 sempre foi o único modo do app,
+ * tratar NULL como 'tackle' é o único jeito de não fazer esses dados
+ * antigos sumirem da lista quando o filtro entrar em produção. `folders`
+ * não tem coluna `modalidade` (confirmado via introspecção) — pastas
+ * continuam sendo compartilhadas entre os dois modos, não fazem parte
+ * deste filtro.
+ */
+export async function fetchPlays(userId: string, gameMode: GameMode): Promise<Play[]> {
+  let query = supabase.from('plays').select('*').eq('user_id', userId);
+  query =
+    gameMode === 'tackle'
+      ? query.or('modalidade.eq.tackle,modalidade.is.null')
+      : query.eq('modalidade', gameMode);
+  const { data, error } = await query.order('created_at', { ascending: true });
   if (error) throw error;
   return (data as PlayRow[]).map(playFromRow);
 }
@@ -101,6 +119,7 @@ interface PlayInput {
   name: string;
   category: Play['category'];
   folderId?: string;
+  gameMode: GameMode;
   fieldRule: Play['fieldRule'];
   players: Play['players'];
   assignments: Play['assignments'];
@@ -114,6 +133,7 @@ export async function insertPlay(userId: string, play: PlayInput): Promise<Play>
       folder_id: play.folderId ?? null,
       name: play.name,
       category: play.category,
+      modalidade: play.gameMode,
       data: { fieldRule: play.fieldRule, players: play.players, assignments: play.assignments },
     })
     .select()
@@ -131,6 +151,7 @@ export async function updatePlay(id: string, play: PlayInput): Promise<Play> {
       folder_id: play.folderId ?? null,
       name: play.name,
       category: play.category,
+      modalidade: play.gameMode,
       data: { fieldRule: play.fieldRule, players: play.players, assignments: play.assignments },
     })
     .eq('id', id)

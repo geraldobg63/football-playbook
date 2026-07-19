@@ -62,6 +62,11 @@ export interface Play {
    * Nunca aponta pra uma pasta inexistente: deleteFolder realoca as jogadas
    * da pasta excluída pra Raiz antes de remover a pasta em si. */
   folderId?: string;
+  /** Modalidade em que a jogada foi salva — coluna própria `modalidade` na
+   * tabela `plays` (não existe em `folders`: pastas são compartilhadas
+   * entre modos). Jogadas antigas sem valor são tratadas como 'tackle' já
+   * em playFromRow (playbookApi.ts), então este campo nunca chega vazio. */
+  gameMode: GameMode;
   fieldRule: FieldRule;
   players: Player[];
   assignments: Assignment[];
@@ -217,7 +222,26 @@ function describeSyncError(operationLabel: string, err: unknown): string {
 
 export const useFieldStore = create<FieldState>((set, get) => ({
   gameMode: 'tackle',
-  setGameMode: (mode) => set({ gameMode: mode }),
+  // Troca o modo ativo e recarrega as jogadas do usuário já filtradas pelo
+  // novo modo (fetchPlays leva o gameMode pra aplicar eq/or 'modalidade' —
+  // ver playbookApi.ts). Pastas ficam de fora: não têm coluna `modalidade`,
+  // então continuam as mesmas nos dois modos. Sem usuário logado, só troca
+  // o estado local (não deveria disparar, já que o toggle só aparece
+  // autenticado, mas evita uma chamada à API sem userId).
+  setGameMode: (mode) => {
+    set({ gameMode: mode });
+    const { currentUserId } = get();
+    if (!currentUserId) return;
+    set({ isLoadingPlaybook: true });
+    fetchPlays(currentUserId, mode)
+      .then((savedPlays) => set({ savedPlays, isLoadingPlaybook: false }))
+      .catch((err) =>
+        set({
+          syncError: describeSyncError('Não foi possível carregar as jogadas desta modalidade', err),
+          isLoadingPlaybook: false,
+        }),
+      );
+  },
   fieldRule: 'NCAA',
   setFieldRule: (rule) => set({ fieldRule: rule }),
   // A formação padrão já nasce populada aqui, então a primeira renderização
@@ -368,12 +392,12 @@ export const useFieldStore = create<FieldState>((set, get) => ({
   // disso (ou sem usuário logado) começa vazio, nunca lido de localStorage.
   savedPlays: [],
   saveCurrentPlay: async (name, category, folderId, existingPlayId) => {
-    const { currentUserId, fieldRule, players, assignments } = get();
+    const { currentUserId, gameMode, fieldRule, players, assignments } = get();
     if (!currentUserId) return; // não deveria disparar sem sessão (UI só aparece autenticada)
     try {
       const play = existingPlayId
-        ? await updatePlay(existingPlayId, { name, category, folderId, fieldRule, players, assignments })
-        : await insertPlay(currentUserId, { name, category, folderId, fieldRule, players, assignments });
+        ? await updatePlay(existingPlayId, { name, category, folderId, gameMode, fieldRule, players, assignments })
+        : await insertPlay(currentUserId, { name, category, folderId, gameMode, fieldRule, players, assignments });
       set((state) => ({
         savedPlays: existingPlayId
           ? state.savedPlays.map((p) => (p.id === play.id ? play : p))
@@ -453,7 +477,8 @@ export const useFieldStore = create<FieldState>((set, get) => ({
   loadUserPlaybook: async (userId) => {
     set({ currentUserId: userId, isLoadingPlaybook: true, syncError: null });
     try {
-      const [folders, savedPlays] = await Promise.all([fetchFolders(userId), fetchPlays(userId)]);
+      const { gameMode } = get();
+      const [folders, savedPlays] = await Promise.all([fetchFolders(userId), fetchPlays(userId, gameMode)]);
       set({ folders, savedPlays, isLoadingPlaybook: false });
     } catch (err) {
       set({

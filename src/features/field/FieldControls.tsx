@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useFieldStore, type DrawingMode, type GameMode } from '../../store/useFieldStore';
 import type { FieldRule } from '../../utils/constants';
 import { OFFENSIVE_FORMATIONS, DEFENSIVE_FORMATIONS } from '../../utils/formations';
@@ -54,6 +54,17 @@ const GAME_MODE_LABELS: Record<GameMode, string> = {
 const OFFENSIVE_FORMATION_NAMES = Object.keys(OFFENSIVE_FORMATIONS);
 const DEFENSIVE_FORMATION_NAMES = Object.keys(DEFENSIVE_FORMATIONS);
 
+// Flag 5x5 ainda não tem dados reais de formação (posições de jogador) em
+// OFFENSIVE_FORMATIONS/DEFENSIVE_FORMATIONS — só os NOMES aparecem no menu
+// nesta etapa. setOffensiveFormation/setDefensiveFormation (useFieldStore)
+// fazem lookup por nome nesses dicionários Tackle-only e não fazem nada se
+// não encontrarem (`formation ? applyFormation(...) : state`), então
+// selecionar um desses nomes é seguro: não move nenhum jogador, não toca no
+// Konva. Preparação estrutural, igual ao próprio gameMode (ver comentário
+// em useFieldStore.ts).
+const FLAG_OFFENSIVE_FORMATION_NAMES = ['Spread', 'Trips', 'Twins'];
+const FLAG_DEFENSIVE_FORMATION_NAMES = ['Man Free', 'Zone 2-3', 'Zone 3-2'];
+
 // Estilo compartilhado por todo botão clicável do app: anel de foco e
 // "afundar" no clique. `transition-all` (em vez de só transition-colors)
 // porque agora também anima a escala do active:scale.
@@ -87,8 +98,23 @@ export function FieldControls({ isOpen }: FieldControlsProps) {
   const clearAllAssignments = useFieldStore((state) => state.clearAllAssignments);
   const isExporting = useFieldStore((state) => state.isExporting);
 
-  const [offenseFormation, setOffenseFormation] = useState(OFFENSIVE_FORMATION_NAMES[0]);
-  const [defenseFormation, setDefenseFormation] = useState(DEFENSIVE_FORMATION_NAMES[0]);
+  const offensiveFormationNames =
+    gameMode === 'flag5x5' ? FLAG_OFFENSIVE_FORMATION_NAMES : OFFENSIVE_FORMATION_NAMES;
+  const defensiveFormationNames =
+    gameMode === 'flag5x5' ? FLAG_DEFENSIVE_FORMATION_NAMES : DEFENSIVE_FORMATION_NAMES;
+
+  const [offenseFormation, setOffenseFormation] = useState(offensiveFormationNames[0]);
+  const [defenseFormation, setDefenseFormation] = useState(defensiveFormationNames[0]);
+
+  // Ao trocar de modalidade, a lista de opções muda inteira — sem isso, o
+  // <select> ficaria mostrando um valor selecionado (ex.: "Shotgun") que não
+  // existe mais nas options de Flag 5x5. Só realinha o VALOR EXIBIDO nos
+  // dropdowns: não chama setOffensiveFormation/setDefensiveFormation, então
+  // não move nenhum jogador nem toca no Konva ao alternar o toggle.
+  useEffect(() => {
+    setOffenseFormation(offensiveFormationNames[0]);
+    setDefenseFormation(defensiveFormationNames[0]);
+  }, [offensiveFormationNames, defensiveFormationNames]);
 
   const handleOffenseChange = (name: string) => {
     setOffenseFormation(name);
@@ -172,7 +198,7 @@ export function FieldControls({ isOpen }: FieldControlsProps) {
             onChange={(e) => handleOffenseChange(e.target.value)}
             className="rounded border border-white/10 bg-lobos-navy-800 px-2 py-1.5 text-sm font-semibold text-white focus:ring-2 focus:ring-lobos-gold-400 focus:outline-none"
           >
-            {OFFENSIVE_FORMATION_NAMES.map((name) => (
+            {offensiveFormationNames.map((name) => (
               <option key={name} value={name}>
                 {name}
               </option>
@@ -187,7 +213,7 @@ export function FieldControls({ isOpen }: FieldControlsProps) {
             onChange={(e) => handleDefenseChange(e.target.value)}
             className="rounded border border-white/10 bg-lobos-navy-800 px-2 py-1.5 text-sm font-semibold text-white focus:ring-2 focus:ring-lobos-gold-400 focus:outline-none"
           >
-            {DEFENSIVE_FORMATION_NAMES.map((name) => (
+            {defensiveFormationNames.map((name) => (
               <option key={name} value={name}>
                 {name}
               </option>
