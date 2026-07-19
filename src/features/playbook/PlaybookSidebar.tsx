@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type Konva from 'konva';
 import { useFieldStore, type Folder, type Play } from '../../store/useFieldStore';
 import { supabase } from '../../supabase';
+import { BatchExportStage } from './BatchExportStage';
+import { exportPlaysToPdf } from './exportPlaysToPdf';
 
 const CATEGORY_LABELS: Record<Play['category'], string> = {
   offense: 'Ataque',
@@ -51,6 +54,17 @@ export function PlaybookSidebar({ isOpen }: PlaybookSidebarProps) {
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
   const [editingFolderName, setEditingFolderName] = useState('');
 
+  // Exportação em lote pra PDF: quais jogadas estão marcadas, e o estado do
+  // <BatchExportStage> off-screen (ver esse arquivo) que captura cada uma
+  // sequencialmente sem tocar no campo que o usuário está editando.
+  const [selectedPlayIds, setSelectedPlayIds] = useState<Set<string>>(new Set());
+  const [isBatchExporting, setIsBatchExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState<{ completed: number; total: number } | null>(
+    null,
+  );
+  const [currentExportPlay, setCurrentExportPlay] = useState<Play | null>(null);
+  const batchExportStageRef = useRef<Konva.Stage>(null);
+
   const handleSave = () => {
     const trimmedName = name.trim();
     if (!trimmedName) return;
@@ -84,6 +98,37 @@ export function PlaybookSidebar({ isOpen }: PlaybookSidebarProps) {
   };
 
   const cancelRenameFolder = () => setEditingFolderId(null);
+
+  const toggleSelectPlay = (id: string) => {
+    setSelectedPlayIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleExportSelected = async () => {
+    const selectedPlays = savedPlays.filter((play) => selectedPlayIds.has(play.id));
+    if (selectedPlays.length === 0 || isBatchExporting) return;
+
+    setIsBatchExporting(true);
+    setExportProgress({ completed: 0, total: selectedPlays.length });
+    try {
+      await exportPlaysToPdf(selectedPlays, setCurrentExportPlay, batchExportStageRef, (completed, total) =>
+        setExportProgress({ completed, total }),
+      );
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      window.alert(`Não foi possível gerar o PDF: ${detail}`);
+    } finally {
+      setIsBatchExporting(false);
+      setExportProgress(null);
+    }
+  };
 
   const handleDeleteFolder = (folder: Folder) => {
     if (
@@ -188,11 +233,28 @@ export function PlaybookSidebar({ isOpen }: PlaybookSidebarProps) {
         <button
           type="button"
           onClick={handleCreateFolder}
-          className={`mb-4 flex w-full items-center justify-center gap-1.5 rounded border-2 border-lobos-gold-500 px-3 py-1.5 text-sm font-semibold text-lobos-gold-500 hover:bg-lobos-gold-500/10 ${INTERACTIVE_BUTTON_CLASSES}`}
+          className={`mb-2 flex w-full items-center justify-center gap-1.5 rounded border-2 border-lobos-gold-500 px-3 py-1.5 text-sm font-semibold text-lobos-gold-500 hover:bg-lobos-gold-500/10 ${INTERACTIVE_BUTTON_CLASSES}`}
         >
           <FolderPlusIcon />
           Nova Pasta
         </button>
+
+        <button
+          type="button"
+          onClick={handleExportSelected}
+          disabled={selectedPlayIds.size === 0 || isBatchExporting}
+          className={`mb-4 flex w-full items-center justify-center gap-1.5 rounded bg-lobos-gold-500 px-3 py-1.5 text-sm font-semibold text-lobos-navy-950 hover:bg-lobos-gold-400 disabled:cursor-not-allowed disabled:bg-lobos-navy-800 disabled:text-slate-500 ${INTERACTIVE_BUTTON_CLASSES}`}
+        >
+          <PdfIcon />
+          {isBatchExporting
+            ? `Exportando ${exportProgress?.completed ?? 0}/${exportProgress?.total ?? 0}…`
+            : `Exportar Selecionados (PDF)${selectedPlayIds.size > 0 ? ` · ${selectedPlayIds.size}` : ''}`}
+        </button>
+
+        {/* Off-screen: nunca visível, só existe pra <BatchExportStage>
+            conseguir renderizar cada jogada selecionada num Konva Stage
+            independente do que está na tela (ver exportPlaysToPdf.ts). */}
+        <BatchExportStage play={currentExportPlay} stageRef={batchExportStageRef} />
 
         {isLoadingPlaybook ? (
           <p className="text-sm text-slate-500">Carregando jogadas…</p>
@@ -253,7 +315,14 @@ export function PlaybookSidebar({ isOpen }: PlaybookSidebarProps) {
             ) : (
               <ul className="flex flex-col gap-1.5">
                 {plays.map((play) => (
-                  <PlayListItem key={play.id} play={play} onLoad={loadPlay} onDelete={handleDelete} />
+                  <PlayListItem
+                    key={play.id}
+                    play={play}
+                    onLoad={loadPlay}
+                    onDelete={handleDelete}
+                    isSelected={selectedPlayIds.has(play.id)}
+                    onToggleSelect={toggleSelectPlay}
+                  />
                 ))}
               </ul>
             )}
@@ -265,7 +334,14 @@ export function PlaybookSidebar({ isOpen }: PlaybookSidebarProps) {
             <h3 className="mb-2 text-xs font-semibold tracking-wide text-slate-400 uppercase">Raiz</h3>
             <ul className="flex flex-col gap-1.5">
               {rootPlays.map((play) => (
-                <PlayListItem key={play.id} play={play} onLoad={loadPlay} onDelete={handleDelete} />
+                <PlayListItem
+                  key={play.id}
+                  play={play}
+                  onLoad={loadPlay}
+                  onDelete={handleDelete}
+                  isSelected={selectedPlayIds.has(play.id)}
+                  onToggleSelect={toggleSelectPlay}
+                />
               ))}
             </ul>
           </div>
@@ -290,16 +366,29 @@ function PlayListItem({
   play,
   onLoad,
   onDelete,
+  isSelected,
+  onToggleSelect,
 }: {
   play: Play;
   onLoad: (id: string) => void;
   onDelete: (play: Play) => void;
+  isSelected: boolean;
+  onToggleSelect: (id: string) => void;
 }) {
   return (
     <li className="flex items-center justify-between gap-2 rounded bg-lobos-navy-800 px-2.5 py-1.5">
-      <span className="truncate text-sm" title={play.name}>
-        {play.name}
-      </span>
+      <label className="flex min-w-0 items-center gap-2">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={() => onToggleSelect(play.id)}
+          aria-label={`Selecionar "${play.name}" para exportação em lote`}
+          className="shrink-0 accent-lobos-gold-500"
+        />
+        <span className="truncate text-sm" title={play.name}>
+          {play.name}
+        </span>
+      </label>
       <div className="flex shrink-0 gap-1">
         <button
           type="button"
@@ -354,6 +443,25 @@ function FolderPlusIcon() {
     >
       <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
       <path d="M12 11v4M10 13h4" />
+    </svg>
+  );
+}
+
+function PdfIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+      <path d="M14 2v6h6" />
     </svg>
   );
 }
