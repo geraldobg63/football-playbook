@@ -5,12 +5,7 @@ import { PIXELS_PER_YARD } from '../../utils/constants';
 import { FieldGeometry } from '../field/FieldGeometry';
 import { PlayerNode } from '../field/PlayerNode';
 import { AssignmentsLayer } from '../field/AssignmentsLayer';
-import { FIELD_LENGTH_YARDS, FIELD_WIDTH_YARDS } from '../field/constants';
-
-// Mesmo tamanho nativo usado no export individual (exportToPng.ts) — sempre
-// resolução de impressão, independente de qualquer zoom/Modo Foco em tela.
-export const BATCH_EXPORT_WIDTH_PX = FIELD_LENGTH_YARDS * PIXELS_PER_YARD;
-export const BATCH_EXPORT_HEIGHT_PX = FIELD_WIDTH_YARDS * PIXELS_PER_YARD;
+import { getFieldCanvasSizePx } from '../field/constants';
 
 interface BatchExportStageProps {
   /** Jogada sendo capturada agora, ou null quando nenhuma exportação está
@@ -31,13 +26,15 @@ interface BatchExportStageProps {
 export function BatchExportStage({ play, stageRef }: BatchExportStageProps) {
   if (!play) return null;
 
+  const { widthPx, heightPx } = getFieldCanvasSizePx(play.gameMode, PIXELS_PER_YARD);
+
   return (
     <div
       aria-hidden="true"
       style={{ position: 'fixed', top: 0, left: '-99999px', pointerEvents: 'none' }}
     >
-      <Stage ref={stageRef} width={BATCH_EXPORT_WIDTH_PX} height={BATCH_EXPORT_HEIGHT_PX}>
-        <FieldGeometry pixelsPerYard={PIXELS_PER_YARD} fieldRule={play.fieldRule} />
+      <Stage ref={stageRef} width={widthPx} height={heightPx}>
+        <FieldGeometry pixelsPerYard={PIXELS_PER_YARD} fieldRule={play.fieldRule} gameMode={play.gameMode} />
         <Layer>
           {play.players.map((player) => (
             <PlayerNode key={player.id} player={player} draggable={false} />

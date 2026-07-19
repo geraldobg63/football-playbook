@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { FieldRule } from '../utils/constants';
-import { createDefaultFormation } from './defaultFormation';
+import { createDefaultFormation, createDefaultFlagFormation } from './defaultFormation';
 import {
   fetchFolders,
   fetchPlays,
@@ -12,12 +12,20 @@ import {
   updatePlay,
   deletePlayRow,
 } from './playbookApi';
-import { OFFENSIVE_FORMATIONS, DEFENSIVE_FORMATIONS, type FormationPosition } from '../utils/formations';
+import {
+  OFFENSIVE_FORMATIONS,
+  DEFENSIVE_FORMATIONS,
+  FLAG_OFFENSIVE_FORMATIONS,
+  FLAG_DEFENSIVE_FORMATIONS,
+  type FormationPosition,
+} from '../utils/formations';
 
-/** Modalidade esportiva — preparação estrutural pra suportar "Tackle 11x11"
- * (padrão atual) e "Flag 5x5" no futuro. Nesta iteração é só estado + UI de
- * alternância: NADA na renderização do Konva (proporções do campo, limite
- * de jogadores, vetores) reage a essa variável ainda, de propósito. */
+/** Modalidade esportiva: "Tackle 11x11" (padrão) ou "Flag 5x5". Determina o
+ * roster (11 vs. 5 jogadores por lado — ver createDefaultFormation vs.
+ * createDefaultFlagFormation), os dicionários de formação
+ * (OFFENSIVE_FORMATIONS vs. FLAG_OFFENSIVE_FORMATIONS, idem defesa) e a
+ * geometria do campo (FieldGeometry.tsx: campo estreito e simplificado em
+ * Flag). A troca de modo substitui o roster inteiro — ver setGameMode. */
 export type GameMode = 'tackle' | 'flag5x5';
 
 export type Team = 'offense' | 'defense';
@@ -74,7 +82,7 @@ export interface Play {
 }
 
 interface FieldState {
-  /** Ver comentário do tipo GameMode acima — só estado por enquanto. */
+  /** Ver comentário do tipo GameMode acima. */
   gameMode: GameMode;
   setGameMode: (mode: GameMode) => void;
   fieldRule: FieldRule;
@@ -222,14 +230,30 @@ function describeSyncError(operationLabel: string, err: unknown): string {
 
 export const useFieldStore = create<FieldState>((set, get) => ({
   gameMode: 'tackle',
-  // Troca o modo ativo e recarrega as jogadas do usuário já filtradas pelo
-  // novo modo (fetchPlays leva o gameMode pra aplicar eq/or 'modalidade' —
-  // ver playbookApi.ts). Pastas ficam de fora: não têm coluna `modalidade`,
-  // então continuam as mesmas nos dois modos. Sem usuário logado, só troca
-  // o estado local (não deveria disparar, já que o toggle só aparece
-  // autenticado, mas evita uma chamada à API sem userId).
+  // Troca o modo ativo. Duas coisas acontecem de imediato, na mesma
+  // chamada de set():
+  // 1) O canvas é limpo e a formação padrão da nova modalidade é carregada
+  //    (roster de 11 jogadores/Tackle ou 5 jogadores/Flag, ids
+  //    completamente diferentes entre os dois — ver createDefaultFormation
+  //    vs. createDefaultFlagFormation). Sem isso, os 11 jogadores de Tackle
+  //    ficariam "presos" no campo estreito de Flag. `activePlayName` também
+  //    é resetado: depois de trocar o roster inteiro, o campo não
+  //    corresponde mais à jogada que estava carregada.
+  // 2) As jogadas do usuário são recarregadas já filtradas pela nova
+  //    modalidade (fetchPlays leva o gameMode pra aplicar eq/or
+  //    'modalidade' — ver playbookApi.ts). Pastas ficam de fora: não têm
+  //    coluna `modalidade`, então continuam as mesmas nos dois modos. Sem
+  //    usuário logado, só troca o estado local (não deveria disparar, já
+  //    que o toggle só aparece autenticado, mas evita uma chamada à API sem
+  //    userId).
   setGameMode: (mode) => {
-    set({ gameMode: mode });
+    set({
+      gameMode: mode,
+      players: mode === 'flag5x5' ? createDefaultFlagFormation() : createDefaultFormation(),
+      assignments: [],
+      activeDrawingId: null,
+      activePlayName: null,
+    });
     const { currentUserId } = get();
     if (!currentUserId) return;
     set({ isLoadingPlaybook: true });
@@ -269,14 +293,21 @@ export const useFieldStore = create<FieldState>((set, get) => ({
         player.id === id ? { ...player, label: newLabel } : player,
       ),
     })),
+  // Dicionário por gameMode: cada um só tem os ids do roster daquela
+  // modalidade (11 em Tackle, 5 em Flag), então applyFormation nunca
+  // reposiciona jogadores do time errado — a troca de roster completo entre
+  // modalidades já aconteceu em setGameMode antes de qualquer formação ser
+  // selecionável na UI (ver comentário lá).
   setOffensiveFormation: (formationName) =>
     set((state) => {
-      const formation = OFFENSIVE_FORMATIONS[formationName];
+      const dictionary = state.gameMode === 'flag5x5' ? FLAG_OFFENSIVE_FORMATIONS : OFFENSIVE_FORMATIONS;
+      const formation = dictionary[formationName];
       return formation ? applyFormation(state, formation) : state;
     }),
   setDefensiveFormation: (formationName) =>
     set((state) => {
-      const formation = DEFENSIVE_FORMATIONS[formationName];
+      const dictionary = state.gameMode === 'flag5x5' ? FLAG_DEFENSIVE_FORMATIONS : DEFENSIVE_FORMATIONS;
+      const formation = dictionary[formationName];
       return formation ? applyFormation(state, formation) : state;
     }),
   drawingMode: 'move',

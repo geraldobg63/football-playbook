@@ -1,4 +1,9 @@
-import { FIELD_WIDTH_YARDS } from '../features/field/constants';
+import {
+  FIELD_WIDTH_YARDS,
+  FLAG_ENDZONE_LENGTH_YARDS,
+  FLAG_PLAYING_FIELD_LENGTH_YARDS,
+  FLAG_FIELD_WIDTH_YARDS,
+} from '../features/field/constants';
 
 /**
  * Dicionário matemático de "personnel groupings" — cada formação reposiciona
@@ -139,5 +144,78 @@ export const DEFENSIVE_FORMATIONS: Record<string, FormationPosition[]> = {
     { playerId: 'def-cb2', x: DL_X_YARDS, y: CENTER_Y_YARDS + CB_WIDE_Y_OFFSET_YARDS },
     { playerId: 'def-fs', x: SCRIMMAGE_X_YARDS + 12, y: CENTER_Y_YARDS - 5 },
     { playerId: 'def-ss', x: SCRIMMAGE_X_YARDS + 12, y: CENTER_Y_YARDS + 5 },
+  ],
+};
+
+/**
+ * Personnel groupings do Flag 5x5 — mesmo princípio das tabelas acima
+ * (reposiciona os MESMOS 5 jogadores por lado, nunca cria/remove), mas com
+ * um roster próprio (ids `flag-off-*`/`flag-def-*`, nunca reaproveitados do
+ * Tackle) sobre o campo estreito de Flag (ver FLAG_* em
+ * features/field/constants.ts). A troca de roster completo entre
+ * modalidades acontece em setGameMode (useFieldStore.ts) — aqui dentro,
+ * cada dicionário só reposiciona jogadores que já existem no estado.
+ */
+const FLAG_SCRIMMAGE_X_YARDS = FLAG_ENDZONE_LENGTH_YARDS + FLAG_PLAYING_FIELD_LENGTH_YARDS / 2; // 25 (meio de campo)
+const FLAG_CENTER_Y_YARDS = FLAG_FIELD_WIDTH_YARDS / 2; // 12.5
+const FLAG_QB_X_YARDS = FLAG_SCRIMMAGE_X_YARDS - 5; // shotgun
+
+export const FLAG_OFFENSIVE_FORMATIONS: Record<string, FormationPosition[]> = {
+  // Center na bola, QB em shotgun, 2 WRs abertos nas extremidades e 1
+  // WR/slot num dos lados internos.
+  Spread: [
+    { playerId: 'flag-off-c', x: FLAG_SCRIMMAGE_X_YARDS, y: FLAG_CENTER_Y_YARDS },
+    { playerId: 'flag-off-qb', x: FLAG_QB_X_YARDS, y: FLAG_CENTER_Y_YARDS },
+    { playerId: 'flag-off-wr1', x: FLAG_SCRIMMAGE_X_YARDS, y: FLAG_CENTER_Y_YARDS - 10 },
+    { playerId: 'flag-off-wr2', x: FLAG_SCRIMMAGE_X_YARDS, y: FLAG_CENTER_Y_YARDS + 10 },
+    { playerId: 'flag-off-wr3', x: FLAG_SCRIMMAGE_X_YARDS, y: FLAG_CENTER_Y_YARDS + 5 },
+  ],
+  // Center na bola, QB em shotgun, 3 WRs agrupados num único lado (direita).
+  Trips: [
+    { playerId: 'flag-off-c', x: FLAG_SCRIMMAGE_X_YARDS, y: FLAG_CENTER_Y_YARDS },
+    { playerId: 'flag-off-qb', x: FLAG_QB_X_YARDS, y: FLAG_CENTER_Y_YARDS },
+    { playerId: 'flag-off-wr1', x: FLAG_SCRIMMAGE_X_YARDS, y: FLAG_CENTER_Y_YARDS + 5 },
+    { playerId: 'flag-off-wr2', x: FLAG_SCRIMMAGE_X_YARDS, y: FLAG_CENTER_Y_YARDS + 7.5 },
+    { playerId: 'flag-off-wr3', x: FLAG_SCRIMMAGE_X_YARDS, y: FLAG_CENTER_Y_YARDS + 10 },
+  ],
+  // Center na bola, QB em shotgun, 2 WRs de um lado (direita) e 1 WR do
+  // lado oposto (esquerda), bem aberto.
+  Twins: [
+    { playerId: 'flag-off-c', x: FLAG_SCRIMMAGE_X_YARDS, y: FLAG_CENTER_Y_YARDS },
+    { playerId: 'flag-off-qb', x: FLAG_QB_X_YARDS, y: FLAG_CENTER_Y_YARDS },
+    { playerId: 'flag-off-wr1', x: FLAG_SCRIMMAGE_X_YARDS, y: FLAG_CENTER_Y_YARDS + 7 },
+    { playerId: 'flag-off-wr2', x: FLAG_SCRIMMAGE_X_YARDS, y: FLAG_CENTER_Y_YARDS + 4 },
+    { playerId: 'flag-off-wr3', x: FLAG_SCRIMMAGE_X_YARDS, y: FLAG_CENTER_Y_YARDS - 10 },
+  ],
+};
+
+export const FLAG_DEFENSIVE_FORMATIONS: Record<string, FormationPosition[]> = {
+  // 1 Rusher central a 7 jd de profundidade (zona de "no-rush" padrão do
+  // flag), 3 DBs alinhados em cima dos recebedores (homem-a-homem), 1
+  // Safety profundo e centralizado.
+  'Man Free': [
+    { playerId: 'flag-def-rush', x: FLAG_SCRIMMAGE_X_YARDS + 7, y: FLAG_CENTER_Y_YARDS },
+    { playerId: 'flag-def-1', x: FLAG_SCRIMMAGE_X_YARDS + 1, y: FLAG_CENTER_Y_YARDS - 10 },
+    { playerId: 'flag-def-2', x: FLAG_SCRIMMAGE_X_YARDS + 1, y: FLAG_CENTER_Y_YARDS + 3 },
+    { playerId: 'flag-def-3', x: FLAG_SCRIMMAGE_X_YARDS + 1, y: FLAG_CENTER_Y_YARDS + 10 },
+    { playerId: 'flag-def-4', x: FLAG_SCRIMMAGE_X_YARDS + 11, y: FLAG_CENTER_Y_YARDS },
+  ],
+  // 1 Rusher + 1 LB cobrindo áreas curtas centralizadas, 3 DBs dividindo o
+  // fundo do campo em terços.
+  'Zone 2-3': [
+    { playerId: 'flag-def-rush', x: FLAG_SCRIMMAGE_X_YARDS + 7, y: FLAG_CENTER_Y_YARDS },
+    { playerId: 'flag-def-1', x: FLAG_SCRIMMAGE_X_YARDS + 3, y: FLAG_CENTER_Y_YARDS },
+    { playerId: 'flag-def-2', x: FLAG_SCRIMMAGE_X_YARDS + 9, y: FLAG_CENTER_Y_YARDS - 8 },
+    { playerId: 'flag-def-3', x: FLAG_SCRIMMAGE_X_YARDS + 9, y: FLAG_CENTER_Y_YARDS },
+    { playerId: 'flag-def-4', x: FLAG_SCRIMMAGE_X_YARDS + 9, y: FLAG_CENTER_Y_YARDS + 8 },
+  ],
+  // 1 Rusher + 2 LBs cobrindo curto/intermediário nas duas metades, 2
+  // Safeties dividindo o fundo do campo em metades.
+  'Zone 3-2': [
+    { playerId: 'flag-def-rush', x: FLAG_SCRIMMAGE_X_YARDS + 7, y: FLAG_CENTER_Y_YARDS },
+    { playerId: 'flag-def-1', x: FLAG_SCRIMMAGE_X_YARDS + 3, y: FLAG_CENTER_Y_YARDS - 6 },
+    { playerId: 'flag-def-2', x: FLAG_SCRIMMAGE_X_YARDS + 3, y: FLAG_CENTER_Y_YARDS + 6 },
+    { playerId: 'flag-def-3', x: FLAG_SCRIMMAGE_X_YARDS + 10, y: FLAG_CENTER_Y_YARDS - 6 },
+    { playerId: 'flag-def-4', x: FLAG_SCRIMMAGE_X_YARDS + 10, y: FLAG_CENTER_Y_YARDS + 6 },
   ],
 };

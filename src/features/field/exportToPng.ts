@@ -1,20 +1,12 @@
 import { useFieldStore } from '../../store/useFieldStore';
 import { PIXELS_PER_YARD } from '../../utils/constants';
-import { FIELD_LENGTH_YARDS, FIELD_WIDTH_YARDS } from './constants';
+import { getFieldCanvasSizePx } from './constants';
 import { stageRef } from './stageRef';
 
 // pixelRatio 3x sobre um canvas 10px/jarda dá ~300 DPI num campo impresso
 // em tamanho de pôster — o canvas em tela é 1:1, então exportar sem
 // escalar geraria serrilhado visível na impressão.
 const EXPORT_PIXEL_RATIO = 3;
-
-// Tamanho NATIVO do campo (mesmo cálculo de Field.tsx) — usado só pra
-// forçar o Stage de volta pra essa resolução na hora de exportar, já que
-// o Modo Foco pode ter encolhido/ampliado o Stage em tela (ver
-// stageScale em Field.tsx). Sem isso, o PNG sairia na resolução do zoom
-// atual em vez de sempre em qualidade de impressão.
-const NATIVE_FIELD_WIDTH_PX = FIELD_LENGTH_YARDS * PIXELS_PER_YARD;
-const NATIVE_FIELD_HEIGHT_PX = FIELD_WIDTH_YARDS * PIXELS_PER_YARD;
 
 // Tempo para o React/Konva repintarem sem os handles de edição antes da
 // captura (ver `isExporting` em useFieldStore) — um `setTimeout` garante
@@ -84,8 +76,15 @@ export async function exportFieldToPng(): Promise<void> {
   const previousHeight = stage.height();
   const previousScale = stage.scale() ?? { x: 1, y: 1 };
 
-  stage.width(NATIVE_FIELD_WIDTH_PX);
-  stage.height(NATIVE_FIELD_HEIGHT_PX);
+  // Tamanho NATIVO do campo (mesmo cálculo de Field.tsx) pra modalidade
+  // ATUAL — usado só pra forçar o Stage de volta pra essa resolução na hora
+  // de exportar, já que o Modo Foco pode ter encolhido/ampliado o Stage em
+  // tela (ver stageScale em Field.tsx). Sem isso, o PNG sairia na resolução
+  // do zoom atual em vez de sempre em qualidade de impressão.
+  const { gameMode } = useFieldStore.getState();
+  const { widthPx, heightPx } = getFieldCanvasSizePx(gameMode, PIXELS_PER_YARD);
+  stage.width(widthPx);
+  stage.height(heightPx);
   stage.scale({ x: 1, y: 1 });
   stage.batchDraw();
 

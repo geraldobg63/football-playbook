@@ -1,6 +1,6 @@
 import type { Player } from './useFieldStore';
 import { FIELD_WIDTH_YARDS } from '../features/field/constants';
-import { offensiveLine } from '../utils/formations';
+import { offensiveLine, FLAG_OFFENSIVE_FORMATIONS, FLAG_DEFENSIVE_FORMATIONS } from '../utils/formations';
 
 /**
  * Formação inicial: ataque pro-style (I-formation) alinhado contra uma
@@ -68,4 +68,47 @@ function createDefense(): Player[] {
     { id: 'def-fs', label: 'FS', team: 'defense', x: SCRIMMAGE_X_YARDS + 10, y },
     { id: 'def-ss', label: 'SS', team: 'defense', x: SCRIMMAGE_X_YARDS + 6, y: y + 6.833 },
   ];
+}
+
+// Rótulos dos 5 jogadores por lado do Flag 5x5 — mesmo padrão de
+// OFFENSIVE_LINE_META acima: as COORDENADAS vêm de utils/formations.ts
+// (Spread/Man Free, os "personnel groupings" padrão de cada lado), só o
+// rótulo/time vive aqui. Ids nunca são reaproveitados do Tackle (roster
+// completamente separado — ver setGameMode em useFieldStore.ts, que troca
+// o roster inteiro na transição de modalidade).
+const FLAG_OFFENSE_META: Record<string, { label: string }> = {
+  'flag-off-c': { label: 'C' },
+  'flag-off-qb': { label: 'QB' },
+  'flag-off-wr1': { label: 'WR' },
+  'flag-off-wr2': { label: 'WR' },
+  'flag-off-wr3': { label: 'WR' },
+};
+
+const FLAG_DEFENSE_META: Record<string, { label: string }> = {
+  'flag-def-rush': { label: 'RSH' },
+  'flag-def-1': { label: 'DB' },
+  'flag-def-2': { label: 'DB' },
+  'flag-def-3': { label: 'DB' },
+  'flag-def-4': { label: 'S' },
+};
+
+/** Formação inicial do Flag 5x5: ataque em "Spread" contra defesa "Man
+ * Free" — mesma ideia de createDefaultFormation() acima, mas com o roster
+ * de 5 jogadores por lado e o campo estreito da modalidade. */
+export function createDefaultFlagFormation(): Player[] {
+  const offense: Player[] = FLAG_OFFENSIVE_FORMATIONS['Spread'].map((pos) => ({
+    id: pos.playerId,
+    label: FLAG_OFFENSE_META[pos.playerId].label,
+    team: 'offense',
+    x: pos.x,
+    y: pos.y,
+  }));
+  const defense: Player[] = FLAG_DEFENSIVE_FORMATIONS['Man Free'].map((pos) => ({
+    id: pos.playerId,
+    label: FLAG_DEFENSE_META[pos.playerId].label,
+    team: 'defense',
+    x: pos.x,
+    y: pos.y,
+  }));
+  return [...offense, ...defense];
 }

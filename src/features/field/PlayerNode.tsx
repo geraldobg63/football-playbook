@@ -1,9 +1,9 @@
-import { memo, useCallback, useEffect } from 'react';
+import { memo, useCallback, useEffect, useMemo } from 'react';
 import type Konva from 'konva';
 import { Circle, Group, Text } from 'react-konva';
 import { PIXELS_PER_YARD } from '../../utils/constants';
 import { clamp } from '../../utils/math';
-import { FIELD_LENGTH_YARDS, FIELD_WIDTH_YARDS } from './constants';
+import { FIELD_LENGTH_YARDS, FIELD_WIDTH_YARDS, FLAG_FIELD_LENGTH_YARDS, FLAG_FIELD_WIDTH_YARDS } from './constants';
 import { useFieldStore, type Player } from '../../store/useFieldStore';
 
 const TEAM_COLORS: Record<Player['team'], string> = {
@@ -14,12 +14,14 @@ const TEAM_COLORS: Record<Player['team'], string> = {
 const LABEL_WHITE = '#ffffff';
 export const PLAYER_RADIUS_YARDS = 1.5;
 
-// Limites do campo de jogo inteiro (incluindo endzones), em pixels — o
-// centro do jogador nunca pode ser arrastado para fora desta caixa.
-const FIELD_BOUNDS_PX = {
-  maxX: FIELD_LENGTH_YARDS * PIXELS_PER_YARD,
-  maxY: FIELD_WIDTH_YARDS * PIXELS_PER_YARD,
-};
+// Limites do campo de jogo inteiro (incluindo endzones), em JARDAS, por
+// modalidade — o campo de Flag é bem menor (ver FLAG_* em ./constants).
+// Convertidos para pixels dentro do componente, já que PIXELS_PER_YARD é
+// fixo entre os dois modos.
+const FIELD_BOUNDS_YARDS_BY_MODE = {
+  tackle: { maxX: FIELD_LENGTH_YARDS, maxY: FIELD_WIDTH_YARDS },
+  flag5x5: { maxX: FLAG_FIELD_LENGTH_YARDS, maxY: FLAG_FIELD_WIDTH_YARDS },
+} as const;
 
 // Tamanho da célula do grid de "snap", em pixels — 1/4 de jarda. Fino o
 // bastante para não travar o posicionamento, mas ainda dá aquela sensação
@@ -33,19 +35,6 @@ const snapToGrid = (pos: { x: number; y: number }) => {
     y: Math.round(pos.y / GRID_SIZE) * GRID_SIZE,
   };
 };
-
-// Restringe a posição já durante o arraste (não só ao soltar), para que o
-// jogador nunca visualmente escape do campo em nenhum frame intermediário —
-// e então encaixa no grid de 1/4 de jarda. Clamp primeiro, snap depois:
-// assim o limite do campo continua valendo mesmo perto das bordas. Hoisted
-// pra fora do componente: não depende de nenhum player específico, então
-// recriar por instância só geraria uma nova referência de função a cada
-// render (quebrando a comparação rasa de props do React.memo abaixo à toa).
-const dragBoundFunc = (pos: { x: number; y: number }) =>
-  snapToGrid({
-    x: clamp(pos.x, 0, FIELD_BOUNDS_PX.maxX),
-    y: clamp(pos.y, 0, FIELD_BOUNDS_PX.maxY),
-  });
 
 // Mesma lógica do dragBoundFunc acima: não dependem de props/estado do
 // jogador, então vivem fora do componente para manter uma referência
@@ -76,10 +65,38 @@ interface PlayerNodeProps {
  * novo, mesmo com `player`/`draggable` inalterados.
  */
 export const PlayerNode = memo(function PlayerNode({ player, draggable }: PlayerNodeProps) {
+  const gameMode = useFieldStore((state) => state.gameMode);
   const updatePlayerPosition = useFieldStore((state) => state.updatePlayerPosition);
   const updatePlayerLabel = useFieldStore((state) => state.updatePlayerLabel);
 
   const radiusPx = PLAYER_RADIUS_YARDS * PIXELS_PER_YARD;
+
+  const fieldBoundsYards = FIELD_BOUNDS_YARDS_BY_MODE[gameMode];
+  const fieldBoundsPx = useMemo(
+    () => ({
+      maxX: fieldBoundsYards.maxX * PIXELS_PER_YARD,
+      maxY: fieldBoundsYards.maxY * PIXELS_PER_YARD,
+    }),
+    [fieldBoundsYards.maxX, fieldBoundsYards.maxY],
+  );
+
+  // Restringe a posição já durante o arraste (não só ao soltar), para que o
+  // jogador nunca visualmente escape do campo em nenhum frame intermediário
+  // — e então encaixa no grid de 1/4 de jarda. Clamp primeiro, snap depois:
+  // assim o limite do campo continua valendo mesmo perto das bordas.
+  // Memoizado por `fieldBoundsPx` (só muda quando gameMode muda, não a cada
+  // render) pra preservar a mesma otimização de referência estável que a
+  // versão hoisted anterior tinha — antes de existir Flag 5x5 os limites
+  // eram sempre os mesmos, então a função vivia fora do componente; agora
+  // dependem da modalidade ativa.
+  const dragBoundFunc = useCallback(
+    (pos: { x: number; y: number }) =>
+      snapToGrid({
+        x: clamp(pos.x, 0, fieldBoundsPx.maxX),
+        y: clamp(pos.y, 0, fieldBoundsPx.maxY),
+      }),
+    [fieldBoundsPx.maxX, fieldBoundsPx.maxY],
+  );
 
   // handleMouseEnter/handleMouseLeave escrevem direto em document.body —
   // fora do controle do React. Hoje os 22 jogadores nunca desmontam de
@@ -98,14 +115,15 @@ export const PlayerNode = memo(function PlayerNode({ player, draggable }: Player
       const xPx = e.target.x();
       const yPx = e.target.y();
 
-      // Pixels -> jardas reais, com clamp de segurança (0-120 x, 0-53.33 y)
-      // independente do dragBoundFunc já ter restringido o arraste em si.
-      const xYards = clamp(xPx / PIXELS_PER_YARD, 0, FIELD_LENGTH_YARDS);
-      const yYards = clamp(yPx / PIXELS_PER_YARD, 0, FIELD_WIDTH_YARDS);
+      // Pixels -> jardas reais, com clamp de segurança (limites da
+      // modalidade ativa) independente do dragBoundFunc já ter restringido
+      // o arraste em si.
+      const xYards = clamp(xPx / PIXELS_PER_YARD, 0, fieldBoundsYards.maxX);
+      const yYards = clamp(yPx / PIXELS_PER_YARD, 0, fieldBoundsYards.maxY);
 
       updatePlayerPosition(player.id, xYards, yYards);
     },
-    [player.id, updatePlayerPosition],
+    [player.id, updatePlayerPosition, fieldBoundsYards.maxX, fieldBoundsYards.maxY],
   );
 
   // Duplo-clique renomeia a sigla via prompt nativo — mas só faz sentido no

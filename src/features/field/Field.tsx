@@ -8,7 +8,7 @@ import { PlayerNode } from './PlayerNode';
 import { AssignmentsLayer } from './AssignmentsLayer';
 import { FieldGeometry } from './FieldGeometry';
 import { stageRef as sharedStageRef } from './stageRef';
-import { FIELD_LENGTH_YARDS, FIELD_WIDTH_YARDS } from './constants';
+import { FIELD_LENGTH_YARDS, FIELD_WIDTH_YARDS, FLAG_FIELD_LENGTH_YARDS, FLAG_FIELD_WIDTH_YARDS } from './constants';
 
 interface FieldProps {
   /** Sobrescreve a escala padrão (px por jarda) definida em constants.ts. */
@@ -36,6 +36,7 @@ export function Field({ pixelsPerYard = PIXELS_PER_YARD }: FieldProps) {
   // Única leitura do Zustand dentro de toda a árvore do campo: os
   // sub-componentes abaixo permanecem "burros", recebendo a matemática já
   // resolvida em jardas/pixels via props, sem conhecer a store.
+  const gameMode = useFieldStore((state) => state.gameMode);
   const fieldRule = useFieldStore((state) => state.fieldRule);
   const players = useFieldStore((state) => state.players);
   const drawingMode = useFieldStore((state) => state.drawingMode);
@@ -58,12 +59,18 @@ export function Field({ pixelsPerYard = PIXELS_PER_YARD }: FieldProps) {
 
   const yd = (yards: number) => yards * pixelsPerYard;
 
+  // Dimensões do campo em jardas, por modalidade — Flag 5x5 usa um campo
+  // bem menor (ver FLAG_* em ./constants). PIXELS_PER_YARD continua o
+  // mesmo nos dois modos, só o total de jardas muda.
+  const fieldLengthYards = gameMode === 'flag5x5' ? FLAG_FIELD_LENGTH_YARDS : FIELD_LENGTH_YARDS;
+  const fieldWidthYards = gameMode === 'flag5x5' ? FLAG_FIELD_WIDTH_YARDS : FIELD_WIDTH_YARDS;
+
   // Tamanho NATIVO do campo (toda a matemática de jarda->pixel em
   // FieldGeometry/PlayerNode/AssignmentsLayer/exportToPng continua baseada
   // nele, sem nenhuma mudança) — o Modo Foco não altera essa escala de
   // verdade, só aplica um zoom uniforme por cima via Stage.scale abaixo.
-  const nativeFieldWidthPx = yd(FIELD_LENGTH_YARDS);
-  const nativeFieldHeightPx = yd(FIELD_WIDTH_YARDS);
+  const nativeFieldWidthPx = yd(fieldLengthYards);
+  const nativeFieldHeightPx = yd(fieldWidthYards);
 
   // Mede o espaço realmente disponível pro campo (o wrapper em App.tsx, que
   // cresce/encolhe quando as barras laterais retraem/expandem) e recalcula
@@ -126,8 +133,8 @@ export function Field({ pixelsPerYard = PIXELS_PER_YARD }: FieldProps) {
   // ponto errado do campo (mais perto do centro do que o cursor realmente
   // está), já que pixelsPerYard sozinho só vale na escala 1:1.
   const pointerToYards = (pointerPx: { x: number; y: number }) => ({
-    x: clamp(pointerPx.x / (pixelsPerYard * stageScale), 0, FIELD_LENGTH_YARDS),
-    y: clamp(pointerPx.y / (pixelsPerYard * stageScale), 0, FIELD_WIDTH_YARDS),
+    x: clamp(pointerPx.x / (pixelsPerYard * stageScale), 0, fieldLengthYards),
+    y: clamp(pointerPx.y / (pixelsPerYard * stageScale), 0, fieldWidthYards),
   });
 
   const handleStageClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
@@ -282,7 +289,7 @@ export function Field({ pixelsPerYard = PIXELS_PER_YARD }: FieldProps) {
         onMouseMove={handleStageMouseMove}
         onDblClick={handleStageDblClick}
       >
-        <FieldGeometry pixelsPerYard={pixelsPerYard} fieldRule={fieldRule} />
+        <FieldGeometry pixelsPerYard={pixelsPerYard} fieldRule={fieldRule} gameMode={gameMode} />
         {/* Camada interativa: separada do fundo estático (listening={false}
             dentro de FieldGeometry) para que só os jogadores capturem eventos
             de arraste. Só é "draggable" no modo 'move' — nos modos de desenho

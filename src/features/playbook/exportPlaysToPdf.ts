@@ -1,7 +1,8 @@
 import { jsPDF } from 'jspdf';
 import type Konva from 'konva';
 import type { Play } from '../../store/useFieldStore';
-import { BATCH_EXPORT_WIDTH_PX, BATCH_EXPORT_HEIGHT_PX } from './BatchExportStage';
+import { PIXELS_PER_YARD } from '../../utils/constants';
+import { getFieldCanvasSizePx } from '../field/constants';
 
 const CATEGORY_LABELS: Record<Play['category'], string> = {
   offense: 'Ataque',
@@ -52,7 +53,12 @@ function drawPlayPage(doc: jsPDF, play: Play, dataUrl: string): void {
   const imageTopY = PAGE_MARGIN_MM + TITLE_TO_IMAGE_GAP_MM;
   const availableWidth = pageWidth - PAGE_MARGIN_MM * 2;
   const availableHeight = pageHeight - imageTopY - PAGE_MARGIN_MM;
-  const nativeAspectRatio = BATCH_EXPORT_WIDTH_PX / BATCH_EXPORT_HEIGHT_PX;
+  // Proporção do canvas de captura DESTA jogada — Tackle e Flag têm
+  // dimensões de campo diferentes (ver getFieldCanvasSizePx), então a
+  // proporção "contain" abaixo precisa ser calculada por jogada, não uma
+  // constante única pro PDF inteiro.
+  const { widthPx, heightPx } = getFieldCanvasSizePx(play.gameMode, PIXELS_PER_YARD);
+  const nativeAspectRatio = widthPx / heightPx;
 
   let imageWidth = availableWidth;
   let imageHeight = imageWidth / nativeAspectRatio;

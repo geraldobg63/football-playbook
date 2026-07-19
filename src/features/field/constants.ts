@@ -59,3 +59,45 @@ export const HASH_MARK_INTERVAL_YARDS = 1;
 // marcação continue legível na escala padrão de 10px/jarda; aumente ou
 // diminua este número para engrossar/afinar as marcas no desenho.
 export const HASH_MARK_LENGTH_YARDS = 1;
+
+// --- Flag 5x5 (campo simplificado) ---------------------------------------
+// Malha: 10 (Left Endzone) + 60 (área de jogo) + 10 (Right Endzone) = 80 de
+// comprimento total, por 35 de largura. Mais estreito e curto que o campo
+// de Tackle, mas com marcação de linhas/números a cada 10 unidades (ver
+// FlagYardLines/FlagYardNumbers em FieldGeometry.tsx) — só sem hash marks.
+export const FLAG_FIELD_WIDTH_YARDS = 35;
+export const FLAG_ENDZONE_LENGTH_YARDS = 10;
+export const FLAG_PLAYING_FIELD_LENGTH_YARDS = 60;
+export const FLAG_FIELD_LENGTH_YARDS =
+  FLAG_PLAYING_FIELD_LENGTH_YARDS + FLAG_ENDZONE_LENGTH_YARDS * 2; // 80
+
+// Linhas verticais cheias a cada 10 unidades — mesma cadência da numeração
+// (ver FlagYardNumbers), diferente do Tackle onde linha (5 jd) e número
+// (10 jd) têm intervalos distintos.
+export const FLAG_YARD_LINE_INTERVAL_YARDS = 10;
+
+// Distância da linha lateral até a base dos números — proporcional ao
+// mesmo afastamento do Tackle (9 jd num campo de 53,33 jd de largura,
+// ~17% da largura), aplicado aos 35 jd do campo de Flag.
+export const FLAG_YARD_NUMBER_INSET_FROM_SIDELINE_YARDS = 6;
+
+// Tipo inline (em vez de importar GameMode de store/useFieldStore.ts) só
+// pra evitar uma dependência de módulo cruzada nova neste arquivo de
+// constantes — estruturalmente idêntico ao GameMode de verdade, então
+// qualquer valor `Play['gameMode']` passa aqui sem conversão.
+type FieldGameMode = 'tackle' | 'flag5x5';
+
+/** Tamanho nativo (pixels, resolução de impressão) do canvas de captura de
+ * uma jogada, por modalidade — usado tanto pelo export individual
+ * (exportToPng.ts) quanto pelo em lote (BatchExportStage.tsx/
+ * exportPlaysToPdf.ts). O campo de Flag 5x5 é bem menor que o de Tackle:
+ * capturar uma jogada de Flag num canvas do tamanho do Tackle deixaria os
+ * jogadores amontoados num canto, com o resto do canvas vazio. */
+export function getFieldCanvasSizePx(
+  gameMode: FieldGameMode,
+  pixelsPerYard: number,
+): { widthPx: number; heightPx: number } {
+  return gameMode === 'flag5x5'
+    ? { widthPx: FLAG_FIELD_LENGTH_YARDS * pixelsPerYard, heightPx: FLAG_FIELD_WIDTH_YARDS * pixelsPerYard }
+    : { widthPx: FIELD_LENGTH_YARDS * pixelsPerYard, heightPx: FIELD_WIDTH_YARDS * pixelsPerYard };
+}
