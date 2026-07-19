@@ -144,31 +144,36 @@ export function FieldControls({ isOpen }: FieldControlsProps) {
         </span>
       </div>
 
-      {/* Seletor de liga por logo — vive fora do padrão ToolbarSection de
-          propósito: os logos já são autoexplicativos (liga reconhecível
-          visualmente), então o card não carrega um micro-label. */}
-      <div className="mb-4 flex flex-row justify-center gap-2 rounded-xl bg-lobos-navy-900 p-2">
-        {FIELD_RULES.map((rule) => (
-          <button
-            key={rule}
-            type="button"
-            onClick={() => setFieldRule(rule)}
-            aria-pressed={fieldRule === rule}
-            aria-label={FIELD_RULE_LABELS[rule]}
-            className={INTERACTIVE_BUTTON_CLASSES}
-          >
-            <img
-              src={FIELD_RULE_LOGOS[rule]}
-              alt={FIELD_RULE_LABELS[rule]}
-              className={`h-12 w-12 cursor-pointer rounded-lg object-contain p-1.5 transition-all ${
-                fieldRule === rule
-                  ? 'border-2 border-lobos-gold-500 bg-lobos-navy-800'
-                  : 'opacity-60 hover:bg-lobos-navy-800/50 hover:opacity-100'
-              }`}
-            />
-          </button>
-        ))}
-      </div>
+      {/* Seletor de liga por logo (regra de hash marks) — só faz sentido
+          tático no Tackle: o campo de Flag não tem hash marks (ver
+          FieldGeometry.tsx), então NFL/NCAA/High School não têm efeito
+          visual nenhum nessa modalidade. Oculto do DOM em Flag 5x5, mas o
+          estado `fieldRule` no Zustand continua existindo e intacto — só a
+          UI some, nada é apagado nem resetado. */}
+      {gameMode === 'tackle' && (
+        <div className="mb-4 flex flex-row justify-center gap-2 rounded-xl bg-lobos-navy-900 p-2">
+          {FIELD_RULES.map((rule) => (
+            <button
+              key={rule}
+              type="button"
+              onClick={() => setFieldRule(rule)}
+              aria-pressed={fieldRule === rule}
+              aria-label={FIELD_RULE_LABELS[rule]}
+              className={INTERACTIVE_BUTTON_CLASSES}
+            >
+              <img
+                src={FIELD_RULE_LOGOS[rule]}
+                alt={FIELD_RULE_LABELS[rule]}
+                className={`h-12 w-12 cursor-pointer rounded-lg object-contain p-1.5 transition-all ${
+                  fieldRule === rule
+                    ? 'border-2 border-lobos-gold-500 bg-lobos-navy-800'
+                    : 'opacity-60 hover:bg-lobos-navy-800/50 hover:opacity-100'
+                }`}
+              />
+            </button>
+          ))}
+        </div>
+      )}
 
       <ToolbarSection label="Ações">
         <button
