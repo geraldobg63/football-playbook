@@ -25,9 +25,10 @@ import {
 const TURF_GREEN = '#1c6b41';
 const LINE_WHITE = '#f5f5f0';
 
-// Números do Flag viram marca d'água (ver FlagYardNumbers) — bem mais
-// transparentes que o branco cheio (opacity 1) usado nos números do Tackle.
-const FLAG_YARD_NUMBER_OPACITY = 0.35;
+// Números de jarda (Tackle e Flag) viram marca d'água — bem mais
+// transparentes que o branco cheio (opacity 1) de antes, pra não competir
+// com o contraste tático das rotas/vetores desenhados por cima.
+const YARD_NUMBER_WATERMARK_OPACITY = 0.35;
 
 // Servida direto de /public pelo Vite, sem import — mesma técnica dos
 // logos de liga em FieldControls.tsx.
@@ -248,10 +249,6 @@ function FlagYardNumbers({
       fieldYard === centerFieldYard ? null : fieldYard < centerFieldYard ? 'right' : 'left';
 
     elements.push(
-      // opacity=0.35: números do Flag são só uma marca d'água de referência
-      // (o campo é bem menor, rotas/vetores já dominam o espaço visual) —
-      // não precisam do mesmo contraste forte do Tackle, onde os números
-      // dividem o campo com bem mais espaço livre em volta.
       <YardNumberLabel
         key={`flag-num-top-${fieldYard}`}
         x={x}
@@ -259,7 +256,6 @@ function FlagYardNumbers({
         rotationDeg={180}
         fontSizePx={fontSizePx}
         label={String(displayValue)}
-        opacity={FLAG_YARD_NUMBER_OPACITY}
       />,
       <YardNumberLabel
         key={`flag-num-bottom-${fieldYard}`}
@@ -268,7 +264,6 @@ function FlagYardNumbers({
         rotationDeg={0}
         fontSizePx={fontSizePx}
         label={String(displayValue)}
-        opacity={FLAG_YARD_NUMBER_OPACITY}
       />,
     );
 
@@ -316,7 +311,7 @@ function DirectionArrow({
       fill={LINE_WHITE}
       stroke={LINE_WHITE}
       strokeWidth={1}
-      opacity={FLAG_YARD_NUMBER_OPACITY}
+      opacity={YARD_NUMBER_WATERMARK_OPACITY}
       listening={false}
     />
   );
@@ -545,16 +540,12 @@ function YardNumberLabel({
   rotationDeg,
   fontSizePx,
   label,
-  opacity = 1,
 }: {
   x: number;
   y: number;
   rotationDeg: number;
   fontSizePx: number;
   label: string;
-  /** Só o Flag passa um valor menor que 1 (marca d'água) — o Tackle não
-   * informa esta prop e continua com o número em opacidade cheia. */
-  opacity?: number;
 }) {
   // Caixa de texto fixa para poder centralizar o rótulo (offsetX/Y = metade
   // da caixa) e girá-lo ao redor do próprio centro.
@@ -576,7 +567,7 @@ function YardNumberLabel({
       fontStyle="bold"
       fontFamily="Arial, sans-serif"
       fill={LINE_WHITE}
-      opacity={opacity}
+      opacity={YARD_NUMBER_WATERMARK_OPACITY}
       listening={false}
     />
   );
