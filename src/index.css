@@ -29,6 +29,10 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
+  /* Sideline Survival: mata o "pull-to-refresh" e o bounce de overscroll no
+     mobile — sem isso, um arraste que começa perto da borda superior da
+     prancheta recarrega a página inteira no meio de uma jogada. */
+  overscroll-behavior: none;
   background-color: var(--color-lobos-navy-950);
 }
 

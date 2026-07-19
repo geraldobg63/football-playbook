@@ -1,13 +1,15 @@
 import { Arrow, Ellipse, Layer, Line } from 'react-konva';
 import { PIXELS_PER_YARD } from '../../utils/constants';
+import { COLOR_OFFENSE_PATH, COLOR_DEFENSE_PATH } from '../../utils/colors';
 import type { Assignment, Player } from '../../store/useFieldStore';
 
-// Cor por time de origem — quem desenhou a linha é dono do vetor.
-const OFFENSE_COLOR = '#eab308'; // amarelo
-const DEFENSE_COLOR = '#ef4444'; // vermelho
+// Cor por time de origem — quem desenhou a linha é dono do vetor. Tokens
+// semânticos (utils/colors.ts), compartilhados com PlayerNode/FieldControls.
+const OFFENSE_COLOR = COLOR_OFFENSE_PATH; // amarelo vivo
+const DEFENSE_COLOR = COLOR_DEFENSE_PATH; // vermelho vivo
 // Zona é sempre um conceito defensivo (área de cobertura), sem dono
-// individual — por isso não segue a lógica de cor por time.
-const ZONE_COLOR = '#ef4444';
+// individual — por isso usa direto a cor de PATH defensiva.
+const ZONE_COLOR = COLOR_DEFENSE_PATH;
 const ZONE_FILL_OPACITY = 0.3;
 
 const STROKE_WIDTH_PX = 3;

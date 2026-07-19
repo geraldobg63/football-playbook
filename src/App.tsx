@@ -17,8 +17,10 @@ function App() {
 
   // Modo Foco: retrai a barra do Playbook (esquerda) e/ou de Ferramentas
   // (direita) pra maximizar o campo. Só afeta o layout de 3 colunas em
-  // telas md+ — nas classes condicionais de PlaybookSidebar/FieldControls
-  // abaixo, o colapso vive inteiramente atrás do prefixo `md:`.
+  // telas lg+ — nas classes condicionais de PlaybookSidebar/FieldControls
+  // abaixo, o colapso vive inteiramente atrás do prefixo `lg:`. Abaixo de
+  // lg o layout é empilhado (campo no topo via order-first) e as barras
+  // ocupam a largura toda, então não há o que retrair.
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
 
@@ -79,14 +81,25 @@ function App() {
         <GameModeToggle mode={gameMode} onChange={setGameMode} />
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-y-hidden">
+      {/* gap-6 no mobile separa campo / playbook / ferramentas, que antes
+          ficavam colados sem respiro. Zerado no desktop (lg:gap-0), onde as
+          três colunas se encostam de propósito, divididas pelas bordas. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto lg:flex-row lg:gap-0 lg:overflow-y-hidden">
         <PlaybookSidebar isOpen={isLeftSidebarOpen} />
         {/* Tratamento de "palco": moldura visual ao redor do Konva (ring,
-            radius, sombra) sem tocar em nada da lógica de renderização —
-            overflow-x-auto/overflow-y-auto/min-w-0/justify-start seguem
-            exatamente como antes, só ganharam classes puramente visuais.
-            `relative` é o que ancora as duas abas flutuantes abaixo. */}
-        <div className="relative flex min-w-0 max-w-full flex-1 justify-start overflow-x-auto overflow-y-auto rounded-xl bg-lobos-navy-900/40 p-4 ring-1 ring-white/5 shadow-2xl">
+            radius, sombra) sem tocar em nada da lógica de renderização.
+            `relative` é o que ancora as duas abas flutuantes abaixo.
+
+            MOBILE (< lg): `order-first` joga o campo pro topo (logo abaixo
+            do header), antes das duas barras empilhadas. A trava
+            `min-h-[45vh] + shrink-0` é o que impede o esmagamento: as duas
+            sidebars são `shrink-0` e a de ferramentas não tem teto de
+            altura, então sem isso o campo (flex-1, basis 0) ficava com 0px
+            e o `h-full` interno do Field colapsava o Stage pra 0x0.
+            DESKTOP (lg+): tudo isso é revertido (`lg:order-none`,
+            `lg:min-h-0`, `lg:w-auto`, `lg:shrink`) e o layout volta a ser
+            exatamente o de antes — campo no centro, sidebars nas laterais. */}
+        <div className="relative order-first flex min-h-[45vh] w-full min-w-0 max-w-full shrink-0 flex-1 justify-start overflow-x-auto overflow-y-auto rounded-xl bg-lobos-navy-900/40 p-4 ring-1 ring-white/5 shadow-2xl lg:order-none lg:min-h-0 lg:w-auto lg:shrink">
           {/* Badge só informativo, propagando gameMode até a área do canvas
               sem tocar em nenhuma linha do componente Field/Konva (regra de
               segurança desta etapa) — vive aqui, em App.tsx, por fora do
@@ -148,7 +161,7 @@ function GameModeToggle({
           role="radio"
           aria-checked={mode === option}
           onClick={() => onChange(option)}
-          className={`rounded-full px-3 py-1 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lobos-gold-400 active:scale-[0.97] ${
+          className={`touch-manipulation rounded-full px-3 py-1 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lobos-gold-400 active:scale-[0.97] ${
             mode === option
               ? 'bg-lobos-gold-500 text-lobos-navy-950'
               : 'text-slate-300 hover:text-white'
@@ -193,7 +206,7 @@ function SidebarToggleTab({
           ? `Recolher barra ${side === 'left' ? 'esquerda' : 'direita'}`
           : `Expandir barra ${side === 'left' ? 'esquerda' : 'direita'}`
       }
-      className={`absolute top-1/2 z-10 hidden -translate-y-1/2 items-center justify-center bg-black/50 px-1 py-6 text-white transition-all hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lobos-gold-400 active:scale-[0.97] md:flex ${
+      className={`absolute top-1/2 z-10 hidden -translate-y-1/2 items-center justify-center bg-black/50 px-1 py-6 text-white transition-all hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lobos-gold-400 active:scale-[0.97] lg:flex ${
         side === 'left' ? 'left-0 rounded-r-md' : 'right-0 rounded-l-md'
       }`}
     >

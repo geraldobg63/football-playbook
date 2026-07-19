@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useFieldStore, type DrawingMode, type GameMode } from '../../store/useFieldStore';
 import type { FieldRule } from '../../utils/constants';
+import { COLOR_OFFENSE_FILL, COLOR_DEFENSE_FILL } from '../../utils/colors';
 import { OFFENSIVE_FORMATIONS, DEFENSIVE_FORMATIONS } from '../../utils/formations';
 import { exportFieldToPng } from './exportToPng';
 
@@ -67,12 +68,14 @@ const FLAG_DEFENSIVE_FORMATION_NAMES = ['Man Free', 'Zone 2-3', 'Zone 3-2'];
 
 // Estilo compartilhado por todo botão clicável do app: anel de foco e
 // "afundar" no clique. `transition-all` (em vez de só transition-colors)
-// porque agora também anima a escala do active:scale.
+// porque agora também anima a escala do active:scale. `touch-manipulation`
+// (Sideline Survival) remove o atraso de ~300ms do duplo-toque nativo no
+// mobile e evita zoom acidental ao tocar controles em sequência rápida.
 const INTERACTIVE_BUTTON_CLASSES =
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lobos-gold-400 active:scale-[0.97] transition-all';
+  'touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lobos-gold-400 active:scale-[0.97] transition-all';
 
 interface FieldControlsProps {
-  /** Modo Foco (App.tsx): false retrai a barra pra w-0 em telas md+. Junto
+  /** Modo Foco (App.tsx): false retrai a barra pra w-0 em telas lg+. Junto
    * com a largura, `overflow-x-visible` (necessário pro tooltip escapar os
    * limites da barra — ver comentário no botão abaixo) também vira
    * condicional: com a barra fechada não há tooltip visível pra escapar
@@ -128,10 +131,10 @@ export function FieldControls({ isOpen }: FieldControlsProps) {
 
   return (
     <div
-      className={`flex w-full shrink-0 flex-col items-start gap-3 overflow-y-auto border-t border-white/5 bg-lobos-navy-900 p-3 shadow-lg transition-all duration-300 md:h-screen md:border-t-0 ${
+      className={`flex h-auto w-full shrink-0 flex-col items-start gap-3 overflow-visible border-t border-white/5 bg-lobos-navy-900 p-3 pb-20 shadow-lg transition-all duration-300 lg:h-screen lg:overflow-y-auto lg:border-t-0 lg:pb-3 ${
         isOpen
-          ? 'overflow-x-visible md:w-72 md:border-l'
-          : 'overflow-x-hidden md:w-0 md:overflow-hidden md:border-l-0 md:p-0'
+          ? 'lg:w-72 lg:overflow-x-visible lg:border-l'
+          : 'lg:w-0 lg:overflow-hidden lg:border-l-0 lg:p-0'
       }`}
     >
       {/* Badge de modalidade ativa — só informativo nesta etapa (ver
@@ -196,7 +199,14 @@ export function FieldControls({ isOpen }: FieldControlsProps) {
       </ToolbarSection>
 
       <ToolbarSection label="Formação">
-        <label className="flex items-center gap-1.5 text-sm font-semibold text-blue-300">
+        {/* Cor do rótulo = cor da PEÇA daquele time (token semântico, ver
+            utils/colors.ts) — antes era text-blue-300/text-red-300, matizes
+            que não batiam com os jogadores no campo. Inline style porque os
+            tokens são hex compartilhados com o Konva, não classes Tailwind. */}
+        <label
+          style={{ color: COLOR_OFFENSE_FILL }}
+          className="flex items-center gap-1.5 text-sm font-semibold"
+        >
           Ataque
           <select
             value={offenseFormation}
@@ -211,7 +221,10 @@ export function FieldControls({ isOpen }: FieldControlsProps) {
           </select>
         </label>
 
-        <label className="flex items-center gap-1.5 text-sm font-semibold text-red-300">
+        <label
+          style={{ color: COLOR_DEFENSE_FILL }}
+          className="flex items-center gap-1.5 text-sm font-semibold"
+        >
           Defesa
           <select
             value={defenseFormation}
@@ -255,7 +268,12 @@ export function FieldControls({ isOpen }: FieldControlsProps) {
                   // regressão que quebrou o desenho numa rodada anterior.
                   // opacity (em vez de hidden/block) dá uma transição suave
                   // de entrada/saída em vez do "flash" instantâneo de antes.
-                  <div className="pointer-events-none absolute top-0 right-full z-50 mr-3 w-48 rounded bg-lobos-navy-950 p-3 text-sm text-white break-words whitespace-normal opacity-0 shadow-lg transition-opacity duration-200 group-hover:opacity-100">
+                  // `hidden lg:block`: o tooltip depende de :hover, que não
+                  // existe no toque — e como ele é absolute/right-full (192px
+                  // pra ESQUERDA do botão), no mobile escaparia da viewport
+                  // agora que a barra é overflow-visible, criando rolagem
+                  // horizontal e sobreposição. No desktop segue igual.
+                  <div className="pointer-events-none absolute top-0 right-full z-50 mr-3 hidden w-48 rounded bg-lobos-navy-950 p-3 text-sm text-white break-words whitespace-normal opacity-0 shadow-lg transition-opacity duration-200 group-hover:opacity-100 lg:block">
                     {tooltip}
                   </div>
                 )}

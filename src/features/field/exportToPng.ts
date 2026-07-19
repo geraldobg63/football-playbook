@@ -75,17 +75,21 @@ export async function exportFieldToPng(): Promise<void> {
   const previousWidth = stage.width();
   const previousHeight = stage.height();
   const previousScale = stage.scale() ?? { x: 1, y: 1 };
+  const previousPosition = stage.position() ?? { x: 0, y: 0 };
 
   // Tamanho NATIVO do campo (mesmo cálculo de Field.tsx) pra modalidade
   // ATUAL — usado só pra forçar o Stage de volta pra essa resolução na hora
-  // de exportar, já que o Modo Foco pode ter encolhido/ampliado o Stage em
-  // tela (ver stageScale em Field.tsx). Sem isso, o PNG sairia na resolução
-  // do zoom atual em vez de sempre em qualidade de impressão.
+  // de exportar, já que Modo Foco/pan/zoom podem ter escalado, deslocado
+  // (position) e reposicionado o Stage em tela. Sem resetar escala=1,
+  // posição=(0,0) e tamanho nativo, o PNG sairia na resolução do zoom atual
+  // e recortado pela região que estivesse visível (pan) em vez do campo
+  // inteiro em qualidade de impressão.
   const { gameMode } = useFieldStore.getState();
   const { widthPx, heightPx } = getFieldCanvasSizePx(gameMode, PIXELS_PER_YARD);
   stage.width(widthPx);
   stage.height(heightPx);
   stage.scale({ x: 1, y: 1 });
+  stage.position({ x: 0, y: 0 });
   stage.batchDraw();
 
   try {
@@ -95,6 +99,7 @@ export async function exportFieldToPng(): Promise<void> {
     stage.width(previousWidth);
     stage.height(previousHeight);
     stage.scale(previousScale);
+    stage.position(previousPosition);
     stage.batchDraw();
     setIsExporting(false);
   }

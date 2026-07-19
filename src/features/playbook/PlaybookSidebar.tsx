@@ -22,11 +22,12 @@ const GAME_MODE_LABELS: Record<GameMode, string> = {
 // Mesmo tratamento de foco/clique aplicado em todo botão do app (ver
 // FieldControls.tsx) — mantido aqui como constante local pra não criar um
 // import cruzado entre features só por causa de uma string de classes.
+// `touch-manipulation` mata o atraso de duplo-toque nativo do mobile.
 const INTERACTIVE_BUTTON_CLASSES =
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lobos-gold-400 active:scale-[0.97] transition-all';
+  'touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lobos-gold-400 active:scale-[0.97] transition-all';
 
 interface PlaybookSidebarProps {
-  /** Modo Foco (App.tsx): false retrai a barra pra w-0 em telas md+, sem
+  /** Modo Foco (App.tsx): false retrai a barra pra w-0 em telas lg+, sem
    * desmontar nada — o formulário/lista continuam com seu estado intacto,
    * só ficam invisíveis até reabrir. Não afeta o layout empilhado mobile. */
   isOpen: boolean;
@@ -158,8 +159,12 @@ export function PlaybookSidebar({ isOpen }: PlaybookSidebarProps) {
 
   return (
     <aside
-      className={`flex h-auto max-h-[45vh] w-full shrink-0 flex-col border-b border-white/5 bg-lobos-navy-900 text-slate-100 transition-all duration-300 md:h-screen md:max-h-none md:border-b-0 ${
-        isOpen ? 'md:w-80 md:border-r' : 'md:w-0 md:overflow-hidden md:border-r-0'
+      // MOBILE: altura natural (h-auto) e overflow-visible — a PÁGINA rola
+      // inteira. O teto de 45vh + scroll interno de antes espremia o
+      // formulário contra a lista, colando os blocos e cortando conteúdo.
+      // DESKTOP (lg): volta a ser coluna de altura fixa com scroll próprio.
+      className={`flex h-auto w-full shrink-0 flex-col overflow-visible border-b border-white/5 bg-lobos-navy-900 text-slate-100 transition-all duration-300 lg:h-screen lg:overflow-hidden lg:border-b-0 ${
+        isOpen ? 'lg:w-80 lg:border-r' : 'lg:w-0 lg:overflow-hidden lg:border-r-0'
       }`}
     >
       <div className="flex flex-col gap-3 border-b border-white/5 p-4">
@@ -223,7 +228,9 @@ export function PlaybookSidebar({ isOpen }: PlaybookSidebarProps) {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      {/* Scroll interno só no desktop. No mobile a lista cresce livre e quem
+          rola é a página — sem isso a área útil colapsava pra poucos pixels. */}
+      <div className="overflow-visible p-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
         {syncError && (
           // Banner não-bloqueante — ao contrário de um window.alert(), não
           // interrompe o fluxo do usuário nem trava a UI; some sozinho na

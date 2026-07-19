@@ -8,9 +8,10 @@ const HELP_TIPS = [
 ];
 
 // Mesmo tratamento de foco/clique aplicado em todo botão do app (ver
-// FieldControls.tsx).
+// FieldControls.tsx) — inclui `touch-manipulation` pra matar o atraso de
+// duplo-toque nativo do mobile.
 const INTERACTIVE_BUTTON_CLASSES =
-  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lobos-gold-400 active:scale-[0.97] transition-all';
+  'touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lobos-gold-400 active:scale-[0.97] transition-all';
 
 /**
  * Botão de ajuda flutuante (fora do Canvas, canto inferior direito) que

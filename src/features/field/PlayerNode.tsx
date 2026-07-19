@@ -2,17 +2,37 @@ import { memo, useCallback, useEffect, useMemo } from 'react';
 import type Konva from 'konva';
 import { Circle, Group, Text } from 'react-konva';
 import { PIXELS_PER_YARD } from '../../utils/constants';
+import { COLOR_OFFENSE_FILL, COLOR_DEFENSE_FILL } from '../../utils/colors';
 import { clamp } from '../../utils/math';
 import { FIELD_LENGTH_YARDS, FIELD_WIDTH_YARDS, FLAG_FIELD_LENGTH_YARDS, FLAG_FIELD_WIDTH_YARDS } from './constants';
 import { useFieldStore, type Player } from '../../store/useFieldStore';
 
+// Sideline Survival — alto contraste sob luz solar: fills vivos e saturados
+// (azul royal / vermelho) em vez dos tons escuros anteriores, que "sumiam"
+// sobre o verde escuro do gramado numa tela de celular ao sol. Cores vindas
+// dos tokens semânticos (utils/colors.ts) — fonte única compartilhada com
+// AssignmentsLayer e os rótulos de FieldControls.
 const TEAM_COLORS: Record<Player['team'], string> = {
-  offense: '#1e3a8a', // azul escuro
-  defense: '#7f1d1d', // vermelho escuro
+  offense: COLOR_OFFENSE_FILL,
+  defense: COLOR_DEFENSE_FILL,
 };
 
 const LABEL_WHITE = '#ffffff';
+// Contorno branco reforçado (era 1.5) — a borda mais espessa cria uma
+// separação nítida entre a peça e o gramado, essencial sob sol forte.
+const PLAYER_STROKE_WIDTH_PX = 2.5;
 export const PLAYER_RADIUS_YARDS = 1.5;
+
+// Sideline Survival C1 — folga MODESTA no alvo de toque, só pra perdoar
+// quase-acertos. Vive em coordenadas nativas (px de PIXELS_PER_YARD), então
+// o anel de hit é fixo em relação ao espaçamento entre jogadores (~2 jd =
+// 22px). Valores agressivos (testamos 40) faziam o anel de um jogador
+// "engolir" o toque do vizinho — em press coverage, o CB por cima do WR
+// roubava o arraste até no centro exato do WR. Por isso um valor pequeno:
+// a solução real de C1 (dedo grande + peça de 9px no mobile) é o PAN/ZOOM
+// do Stage (ver Field.tsx), que separa os jogadores na TELA e faz o dedo
+// mapear pra menos px nativos — aí a folga não precisa ser grande.
+const PLAYER_HIT_STROKE_WIDTH_PX = 15;
 
 // Limites do campo de jogo inteiro (incluindo endzones), em JARDAS, por
 // modalidade — o campo de Flag é bem menor (ver FLAG_* em ./constants).
@@ -134,7 +154,11 @@ export const PlayerNode = memo(function PlayerNode({ player, draggable }: Player
   // deixando o desenho travado "em andamento" pra sempre. Por isso só
   // cancela o bubbling (e abre o prompt) quando não há desenho possível.
   const handleDblClick = useCallback(
-    (e: Konva.KonvaEventObject<MouseEvent>) => {
+    // Serve 'dblclick' (mouse) E 'dbltap' (toque) — o Konva não sintetiza um
+    // a partir do outro, então sem o dbltap renomear era impossível no
+    // celular. Não lê nenhuma propriedade nativa do evento além de
+    // cancelBubble, por isso o mesmo handler atende os dois.
+    (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
       if (!draggable) return;
 
       e.cancelBubble = true;
@@ -159,6 +183,7 @@ export const PlayerNode = memo(function PlayerNode({ player, draggable }: Player
       dragBoundFunc={dragBoundFunc}
       onDragEnd={handleDragEnd}
       onDblClick={handleDblClick}
+      onDblTap={handleDblClick}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
@@ -166,7 +191,8 @@ export const PlayerNode = memo(function PlayerNode({ player, draggable }: Player
         radius={radiusPx}
         fill={TEAM_COLORS[player.team]}
         stroke={LABEL_WHITE}
-        strokeWidth={1.5}
+        strokeWidth={PLAYER_STROKE_WIDTH_PX}
+        hitStrokeWidth={PLAYER_HIT_STROKE_WIDTH_PX}
       />
       <Text
         text={player.label}
